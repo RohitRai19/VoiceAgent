@@ -1,0 +1,784 @@
+{
+  "metadata": {
+    "store_name": "ShopEase India",
+    "description": "RAG knowledge base for customer-support agent: order details, order tracking history, refund status and overall stock.",
+    "currency": "INR",
+    "last_updated": "2026-11-15",
+    "order_status_values": ["Processing", "Packed", "Shipped", "Out for Delivery", "Delivered", "Cancelled", "Returned"],
+    "refund_status_values": ["Not Applicable", "Requested", "Approved", "Processing", "Completed", "Rejected"]
+  },
+
+  "orders": [
+    {
+      "order_id": "ORD-10001",
+      "customer_name": "Rahul Verma",
+      "customer_email": "rahul.verma@example.com",
+      "phone": "+91-98XXXXXX01",
+      "order_date": "2026-11-01",
+      "items": [
+        { "sku": "SKU-ELEC-001", "product": "Wireless Bluetooth Earbuds", "qty": 1, "unit_price": 1999 }
+      ],
+      "total_amount": 1999,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Sector 45, Gurugram, Haryana 122003",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345671",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-05",
+      "delivered_on": "2026-11-04",
+      "tracking_history": [
+        { "timestamp": "2026-11-01 10:15", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-01 18:40", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-02 09:00", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-04 08:30", "status": "Out for Delivery", "location": "Gurugram Sector 45" },
+        { "timestamp": "2026-11-04 14:20", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10002",
+      "customer_name": "Priya Sharma",
+      "customer_email": "priya.sharma@example.com",
+      "phone": "+91-98XXXXXX02",
+      "order_date": "2026-11-02",
+      "items": [
+        { "sku": "SKU-FASH-003", "product": "Women's Running Shoes (Size 6)", "qty": 1, "unit_price": 2499 }
+      ],
+      "total_amount": 2499,
+      "payment_method": "Credit Card",
+      "payment_status": "Refunded",
+      "shipping_address": "Dwarka Sector 10, New Delhi 110075",
+      "courier": "Blue Dart",
+      "tracking_id": "BD7723456782",
+      "order_status": "Returned",
+      "expected_delivery": "2026-11-06",
+      "delivered_on": "2026-11-05",
+      "tracking_history": [
+        { "timestamp": "2026-11-02 11:05", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-02 20:10", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-03 08:45", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-05 09:10", "status": "Out for Delivery", "location": "Dwarka" },
+        { "timestamp": "2026-11-05 13:00", "status": "Delivered", "location": "Customer Address" },
+        { "timestamp": "2026-11-07 16:30", "status": "Return Pickup Done", "location": "Customer Address" },
+        { "timestamp": "2026-11-09 11:00", "status": "Returned to Warehouse", "location": "Delhi Warehouse" }
+      ],
+      "refund": { "status": "Completed", "amount": 2499, "reason": "Size too small", "requested_on": "2026-11-06", "completed_on": "2026-11-11", "refund_mode": "Original payment method (Credit Card)" }
+    },
+    {
+      "order_id": "ORD-10003",
+      "customer_name": "Amit Singh",
+      "customer_email": "amit.singh@example.com",
+      "phone": "+91-98XXXXXX03",
+      "order_date": "2026-11-10",
+      "items": [
+        { "sku": "SKU-ELEC-002", "product": "Smart Watch Pro", "qty": 1, "unit_price": 4999 },
+        { "sku": "SKU-ELEC-005", "product": "USB-C Fast Charger 30W", "qty": 1, "unit_price": 899 }
+      ],
+      "total_amount": 5898,
+      "payment_method": "Cash on Delivery",
+      "payment_status": "Pending",
+      "shipping_address": "Noida Sector 62, Uttar Pradesh 201301",
+      "courier": "Ecom Express",
+      "tracking_id": "ECM5512345683",
+      "order_status": "Shipped",
+      "expected_delivery": "2026-11-16",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-10 14:22", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-11 09:30", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-12 07:50", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-14 19:05", "status": "In Transit", "location": "Noida Sorting Center" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10004",
+      "customer_name": "Sneha Kapoor",
+      "customer_email": "sneha.kapoor@example.com",
+      "phone": "+91-98XXXXXX04",
+      "order_date": "2026-11-08",
+      "items": [
+        { "sku": "SKU-HOME-001", "product": "Non-Stick Cookware Set (5 pcs)", "qty": 1, "unit_price": 3299 }
+      ],
+      "total_amount": 3299,
+      "payment_method": "Debit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Vaishali, Ghaziabad, Uttar Pradesh 201010",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345684",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-12",
+      "delivered_on": "2026-11-12",
+      "tracking_history": [
+        { "timestamp": "2026-11-08 12:00", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-09 10:15", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-09 18:00", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-12 08:45", "status": "Out for Delivery", "location": "Ghaziabad" },
+        { "timestamp": "2026-11-12 15:30", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Requested", "amount": 3299, "reason": "One pan arrived with a dent", "requested_on": "2026-11-13", "completed_on": null, "refund_mode": "Original payment method (Debit Card)" }
+    },
+    {
+      "order_id": "ORD-10005",
+      "customer_name": "Vikram Mehta",
+      "customer_email": "vikram.mehta@example.com",
+      "phone": "+91-98XXXXXX05",
+      "order_date": "2026-11-12",
+      "items": [
+        { "sku": "SKU-BOOK-001", "product": "Atomic Habits (Paperback)", "qty": 2, "unit_price": 499 }
+      ],
+      "total_amount": 998,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Rohini Sector 7, New Delhi 110085",
+      "courier": "India Post",
+      "tracking_id": "IP9912345685",
+      "order_status": "Processing",
+      "expected_delivery": "2026-11-18",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-12 09:45", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-12 09:46", "status": "Payment Confirmed", "location": "Online" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10006",
+      "customer_name": "Neha Gupta",
+      "customer_email": "neha.gupta@example.com",
+      "phone": "+91-98XXXXXX06",
+      "order_date": "2026-10-28",
+      "items": [
+        { "sku": "SKU-ELEC-003", "product": "Bluetooth Speaker 20W", "qty": 1, "unit_price": 2799 }
+      ],
+      "total_amount": 2799,
+      "payment_method": "Net Banking",
+      "payment_status": "Refunded",
+      "shipping_address": "Indirapuram, Ghaziabad, Uttar Pradesh 201014",
+      "courier": "N/A",
+      "tracking_id": null,
+      "order_status": "Cancelled",
+      "expected_delivery": null,
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-10-28 16:20", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-10-28 17:05", "status": "Cancelled by Customer", "location": "Online" }
+      ],
+      "refund": { "status": "Completed", "amount": 2799, "reason": "Customer cancelled before dispatch", "requested_on": "2026-10-28", "completed_on": "2026-11-02", "refund_mode": "Original payment method (Net Banking)" }
+    },
+    {
+      "order_id": "ORD-10007",
+      "customer_name": "Karan Malhotra",
+      "customer_email": "karan.malhotra@example.com",
+      "phone": "+91-98XXXXXX07",
+      "order_date": "2026-11-13",
+      "items": [
+        { "sku": "SKU-FASH-001", "product": "Men's Cotton T-Shirt (Black, L)", "qty": 3, "unit_price": 599 }
+      ],
+      "total_amount": 1797,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "DLF Phase 3, Gurugram, Haryana 122002",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345687",
+      "order_status": "Out for Delivery",
+      "expected_delivery": "2026-11-15",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-13 08:10", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-13 13:30", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-14 06:50", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-15 08:05", "status": "Out for Delivery", "location": "DLF Phase 3" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10008",
+      "customer_name": "Anjali Rao",
+      "customer_email": "anjali.rao@example.com",
+      "phone": "+91-98XXXXXX08",
+      "order_date": "2026-11-03",
+      "items": [
+        { "sku": "SKU-BEAU-001", "product": "Vitamin C Face Serum 30ml", "qty": 2, "unit_price": 699 }
+      ],
+      "total_amount": 1398,
+      "payment_method": "Credit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Faridabad Sector 15, Haryana 121007",
+      "courier": "Ecom Express",
+      "tracking_id": "ECM5512345688",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-07",
+      "delivered_on": "2026-11-07",
+      "tracking_history": [
+        { "timestamp": "2026-11-03 19:00", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-04 10:00", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-04 21:30", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-07 09:00", "status": "Out for Delivery", "location": "Faridabad" },
+        { "timestamp": "2026-11-07 12:45", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Rejected", "amount": 0, "reason": "Return requested after 7-day window; product seal opened", "requested_on": "2026-11-14", "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10009",
+      "customer_name": "Rohan Das",
+      "customer_email": "rohan.das@example.com",
+      "phone": "+91-98XXXXXX09",
+      "order_date": "2026-11-09",
+      "items": [
+        { "sku": "SKU-ELEC-004", "product": "Mechanical Keyboard RGB", "qty": 1, "unit_price": 3499 }
+      ],
+      "total_amount": 3499,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Lajpat Nagar, New Delhi 110024",
+      "courier": "Blue Dart",
+      "tracking_id": "BD7723456789",
+      "order_status": "Returned",
+      "expected_delivery": "2026-11-12",
+      "delivered_on": "2026-11-11",
+      "tracking_history": [
+        { "timestamp": "2026-11-09 11:40", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-09 17:00", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-10 07:30", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-11 08:50", "status": "Out for Delivery", "location": "Lajpat Nagar" },
+        { "timestamp": "2026-11-11 11:30", "status": "Delivered", "location": "Customer Address" },
+        { "timestamp": "2026-11-13 15:00", "status": "Return Pickup Done", "location": "Customer Address" },
+        { "timestamp": "2026-11-14 12:10", "status": "Returned to Warehouse", "location": "Delhi Warehouse" }
+      ],
+      "refund": { "status": "Processing", "amount": 3499, "reason": "Few keys not working", "requested_on": "2026-11-12", "completed_on": null, "refund_mode": "Original payment method (UPI)" }
+    },
+    {
+      "order_id": "ORD-10010",
+      "customer_name": "Meera Iyer",
+      "customer_email": "meera.iyer@example.com",
+      "phone": "+91-98XXXXXX10",
+      "order_date": "2026-11-14",
+      "items": [
+        { "sku": "SKU-HOME-002", "product": "Electric Kettle 1.5L", "qty": 1, "unit_price": 1299 },
+        { "sku": "SKU-GROC-001", "product": "Green Tea Bags (100 pcs)", "qty": 2, "unit_price": 349 }
+      ],
+      "total_amount": 1997,
+      "payment_method": "Debit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Sushant Lok 1, Gurugram, Haryana 122009",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345690",
+      "order_status": "Packed",
+      "expected_delivery": "2026-11-17",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-14 20:30", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-15 10:00", "status": "Packed", "location": "Gurugram Warehouse" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10011",
+      "customer_name": "Arjun Nair",
+      "customer_email": "arjun.nair@example.com",
+      "phone": "+91-98XXXXXX11",
+      "order_date": "2026-10-30",
+      "items": [
+        { "sku": "SKU-ELEC-006", "product": "Laptop Backpack 15.6 inch", "qty": 1, "unit_price": 1499 }
+      ],
+      "total_amount": 1499,
+      "payment_method": "Cash on Delivery",
+      "payment_status": "Paid",
+      "shipping_address": "Mayur Vihar Phase 1, New Delhi 110091",
+      "courier": "Ecom Express",
+      "tracking_id": "ECM5512345691",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-03",
+      "delivered_on": "2026-11-03",
+      "tracking_history": [
+        { "timestamp": "2026-10-30 13:15", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-10-31 09:00", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-10-31 19:20", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-03 08:40", "status": "Out for Delivery", "location": "Mayur Vihar" },
+        { "timestamp": "2026-11-03 16:10", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10012",
+      "customer_name": "Pooja Bansal",
+      "customer_email": "pooja.bansal@example.com",
+      "phone": "+91-98XXXXXX12",
+      "order_date": "2026-11-05",
+      "items": [
+        { "sku": "SKU-FASH-002", "product": "Women's Kurti Set (M)", "qty": 1, "unit_price": 1899 }
+      ],
+      "total_amount": 1899,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Palam Vihar, Gurugram, Haryana 122017",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345692",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-09",
+      "delivered_on": "2026-11-08",
+      "tracking_history": [
+        { "timestamp": "2026-11-05 15:30", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-06 09:10", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-06 18:00", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-08 08:20", "status": "Out for Delivery", "location": "Palam Vihar" },
+        { "timestamp": "2026-11-08 12:00", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Approved", "amount": 1899, "reason": "Colour different from listing", "requested_on": "2026-11-10", "completed_on": null, "refund_mode": "Original payment method (UPI)", "note": "Return pickup scheduled for 2026-11-16; refund credited within 5-7 business days after warehouse QC." }
+    },
+    {
+      "order_id": "ORD-10013",
+      "customer_name": "Sanjay Kumar",
+      "customer_email": "sanjay.kumar@example.com",
+      "phone": "+91-98XXXXXX13",
+      "order_date": "2026-11-11",
+      "items": [
+        { "sku": "SKU-SPRT-001", "product": "Yoga Mat 6mm", "qty": 1, "unit_price": 799 },
+        { "sku": "SKU-SPRT-002", "product": "Resistance Bands Set (5 pcs)", "qty": 1, "unit_price": 649 }
+      ],
+      "total_amount": 1448,
+      "payment_method": "Credit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Greater Noida West, Uttar Pradesh 201306",
+      "courier": "Blue Dart",
+      "tracking_id": "BD7723456793",
+      "order_status": "Shipped",
+      "expected_delivery": "2026-11-16",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-11 10:00", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-12 11:30", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-13 06:45", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-14 22:10", "status": "In Transit", "location": "Noida Sorting Center" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10014",
+      "customer_name": "Divya Menon",
+      "customer_email": "divya.menon@example.com",
+      "phone": "+91-98XXXXXX14",
+      "order_date": "2026-10-25",
+      "items": [
+        { "sku": "SKU-ELEC-007", "product": "Power Bank 20000mAh", "qty": 1, "unit_price": 1799 }
+      ],
+      "total_amount": 1799,
+      "payment_method": "UPI",
+      "payment_status": "Refunded",
+      "shipping_address": "Janakpuri, New Delhi 110058",
+      "courier": "Ecom Express",
+      "tracking_id": "ECM5512345694",
+      "order_status": "Returned",
+      "expected_delivery": "2026-10-29",
+      "delivered_on": "2026-10-29",
+      "tracking_history": [
+        { "timestamp": "2026-10-25 17:45", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-10-26 09:30", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-10-26 20:00", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-10-29 08:15", "status": "Out for Delivery", "location": "Janakpuri" },
+        { "timestamp": "2026-10-29 13:40", "status": "Delivered", "location": "Customer Address" },
+        { "timestamp": "2026-10-31 14:00", "status": "Return Pickup Done", "location": "Customer Address" },
+        { "timestamp": "2026-11-02 10:30", "status": "Returned to Warehouse", "location": "Delhi Warehouse" }
+      ],
+      "refund": { "status": "Completed", "amount": 1799, "reason": "Not charging properly", "requested_on": "2026-10-30", "completed_on": "2026-11-05", "refund_mode": "Original payment method (UPI)" }
+    },
+    {
+      "order_id": "ORD-10015",
+      "customer_name": "Manish Jain",
+      "customer_email": "manish.jain@example.com",
+      "phone": "+91-98XXXXXX15",
+      "order_date": "2026-11-13",
+      "items": [
+        { "sku": "SKU-GROC-002", "product": "Organic Almonds 500g", "qty": 2, "unit_price": 649 },
+        { "sku": "SKU-GROC-003", "product": "Cold-Pressed Coconut Oil 1L", "qty": 1, "unit_price": 499 }
+      ],
+      "total_amount": 1797,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Sohna Road, Gurugram, Haryana 122018",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345695",
+      "order_status": "Shipped",
+      "expected_delivery": "2026-11-16",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-13 12:20", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-14 09:00", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-14 17:30", "status": "Shipped", "location": "Gurugram Hub" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10016",
+      "customer_name": "Ritika Chawla",
+      "customer_email": "ritika.chawla@example.com",
+      "phone": "+91-98XXXXXX16",
+      "order_date": "2026-11-06",
+      "items": [
+        { "sku": "SKU-BEAU-002", "product": "Hair Dryer 1800W", "qty": 1, "unit_price": 1599 }
+      ],
+      "total_amount": 1599,
+      "payment_method": "Debit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Pitampura, New Delhi 110034",
+      "courier": "Blue Dart",
+      "tracking_id": "BD7723456796",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-10",
+      "delivered_on": "2026-11-10",
+      "tracking_history": [
+        { "timestamp": "2026-11-06 09:50", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-06 16:00", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-07 07:15", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-09 18:30", "status": "Delivery Attempt Failed - Customer Unavailable", "location": "Pitampura" },
+        { "timestamp": "2026-11-10 09:00", "status": "Out for Delivery", "location": "Pitampura" },
+        { "timestamp": "2026-11-10 11:20", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10017",
+      "customer_name": "Deepak Yadav",
+      "customer_email": "deepak.yadav@example.com",
+      "phone": "+91-98XXXXXX17",
+      "order_date": "2026-11-14",
+      "items": [
+        { "sku": "SKU-ELEC-008", "product": "Wireless Mouse", "qty": 2, "unit_price": 699 }
+      ],
+      "total_amount": 1398,
+      "payment_method": "Cash on Delivery",
+      "payment_status": "Pending",
+      "shipping_address": "Manesar, Gurugram, Haryana 122051",
+      "courier": "Delhivery",
+      "tracking_id": null,
+      "order_status": "Processing",
+      "expected_delivery": "2026-11-19",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-14 22:10", "status": "Order Placed", "location": "Online" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10018",
+      "customer_name": "Kavita Joshi",
+      "customer_email": "kavita.joshi@example.com",
+      "phone": "+91-98XXXXXX18",
+      "order_date": "2026-11-04",
+      "items": [
+        { "sku": "SKU-HOME-003", "product": "Bedsheet Set King Size (Cotton)", "qty": 1, "unit_price": 1699 }
+      ],
+      "total_amount": 1699,
+      "payment_method": "Net Banking",
+      "payment_status": "Refunded",
+      "shipping_address": "Saket, New Delhi 110017",
+      "courier": "Ecom Express",
+      "tracking_id": "ECM5512345698",
+      "order_status": "Cancelled",
+      "expected_delivery": "2026-11-08",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-04 14:00", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-05 10:30", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-05 19:00", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-08 09:00", "status": "Delivery Attempt Failed - Address Not Found", "location": "Saket" },
+        { "timestamp": "2026-11-09 09:00", "status": "Delivery Attempt Failed - Customer Unreachable", "location": "Saket" },
+        { "timestamp": "2026-11-10 12:00", "status": "Returned to Origin (RTO)", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-10 12:05", "status": "Cancelled - RTO", "location": "System" }
+      ],
+      "refund": { "status": "Completed", "amount": 1699, "reason": "Undelivered - returned to origin", "requested_on": "2026-11-10", "completed_on": "2026-11-14", "refund_mode": "Original payment method (Net Banking)" }
+    },
+    {
+      "order_id": "ORD-10019",
+      "customer_name": "Suresh Pillai",
+      "customer_email": "suresh.pillai@example.com",
+      "phone": "+91-98XXXXXX19",
+      "order_date": "2026-11-07",
+      "items": [
+        { "sku": "SKU-ELEC-009", "product": "LED Desk Lamp", "qty": 1, "unit_price": 1199 },
+        { "sku": "SKU-BOOK-002", "product": "Deep Work (Paperback)", "qty": 1, "unit_price": 399 }
+      ],
+      "total_amount": 1598,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Vasant Kunj, New Delhi 110070",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345699",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-11",
+      "delivered_on": "2026-11-10",
+      "tracking_history": [
+        { "timestamp": "2026-11-07 11:11", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-07 17:40", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-08 07:00", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-10 08:30", "status": "Out for Delivery", "location": "Vasant Kunj" },
+        { "timestamp": "2026-11-10 13:15", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10020",
+      "customer_name": "Tanya Bhatia",
+      "customer_email": "tanya.bhatia@example.com",
+      "phone": "+91-98XXXXXX20",
+      "order_date": "2026-11-12",
+      "items": [
+        { "sku": "SKU-FASH-004", "product": "Men's Formal Shoes (Size 9)", "qty": 1, "unit_price": 2999 }
+      ],
+      "total_amount": 2999,
+      "payment_method": "Credit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Golf Course Road, Gurugram, Haryana 122011",
+      "courier": "Blue Dart",
+      "tracking_id": "BD7723456800",
+      "order_status": "Out for Delivery",
+      "expected_delivery": "2026-11-15",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-12 18:00", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-13 10:20", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-13 21:00", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-15 07:45", "status": "Out for Delivery", "location": "Golf Course Road" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10021",
+      "customer_name": "Harsh Agarwal",
+      "customer_email": "harsh.agarwal@example.com",
+      "phone": "+91-98XXXXXX21",
+      "order_date": "2026-11-01",
+      "items": [
+        { "sku": "SKU-ELEC-002", "product": "Smart Watch Pro", "qty": 1, "unit_price": 4999 }
+      ],
+      "total_amount": 4999,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Kaushambi, Ghaziabad, Uttar Pradesh 201010",
+      "courier": "Ecom Express",
+      "tracking_id": "ECM5512345701",
+      "order_status": "Returned",
+      "expected_delivery": "2026-11-05",
+      "delivered_on": "2026-11-05",
+      "tracking_history": [
+        { "timestamp": "2026-11-01 09:30", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-01 15:00", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-02 08:00", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-05 09:15", "status": "Out for Delivery", "location": "Kaushambi" },
+        { "timestamp": "2026-11-05 14:00", "status": "Delivered", "location": "Customer Address" },
+        { "timestamp": "2026-11-08 11:00", "status": "Return Pickup Done", "location": "Customer Address" },
+        { "timestamp": "2026-11-10 10:00", "status": "Returned to Warehouse", "location": "Delhi Warehouse" }
+      ],
+      "refund": { "status": "Rejected", "amount": 0, "reason": "Warehouse QC found physical damage not covered under return policy", "requested_on": "2026-11-07", "completed_on": null, "refund_mode": null, "note": "Product shipped back to customer on 2026-11-12." }
+    },
+    {
+      "order_id": "ORD-10022",
+      "customer_name": "Isha Saxena",
+      "customer_email": "isha.saxena@example.com",
+      "phone": "+91-98XXXXXX22",
+      "order_date": "2026-11-10",
+      "items": [
+        { "sku": "SKU-HOME-004", "product": "Air Purifier HEPA", "qty": 1, "unit_price": 8999 }
+      ],
+      "total_amount": 8999,
+      "payment_method": "EMI (Credit Card)",
+      "payment_status": "Paid",
+      "shipping_address": "Dwarka Sector 21, New Delhi 110077",
+      "courier": "Blue Dart",
+      "tracking_id": "BD7723456802",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-14",
+      "delivered_on": "2026-11-13",
+      "tracking_history": [
+        { "timestamp": "2026-11-10 20:45", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-11 10:00", "status": "Packed", "location": "Delhi Warehouse" },
+        { "timestamp": "2026-11-11 19:30", "status": "Shipped", "location": "Delhi Hub" },
+        { "timestamp": "2026-11-13 08:00", "status": "Out for Delivery", "location": "Dwarka" },
+        { "timestamp": "2026-11-13 11:50", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10023",
+      "customer_name": "Nikhil Arora",
+      "customer_email": "nikhil.arora@example.com",
+      "phone": "+91-98XXXXXX23",
+      "order_date": "2026-11-09",
+      "items": [
+        { "sku": "SKU-ELEC-001", "product": "Wireless Bluetooth Earbuds", "qty": 1, "unit_price": 1999 },
+        { "sku": "SKU-ELEC-005", "product": "USB-C Fast Charger 30W", "qty": 1, "unit_price": 899 }
+      ],
+      "total_amount": 2898,
+      "payment_method": "Debit Card",
+      "payment_status": "Partially Refunded",
+      "shipping_address": "Sector 56, Gurugram, Haryana 122011",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345703",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-12",
+      "delivered_on": "2026-11-12",
+      "tracking_history": [
+        { "timestamp": "2026-11-09 13:00", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-10 09:40", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-10 18:10", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-12 08:25", "status": "Out for Delivery", "location": "Sector 56" },
+        { "timestamp": "2026-11-12 12:30", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Completed", "amount": 899, "reason": "Charger missing from the package (partial refund for SKU-ELEC-005)", "requested_on": "2026-11-12", "completed_on": "2026-11-14", "refund_mode": "Original payment method (Debit Card)" }
+    },
+    {
+      "order_id": "ORD-10024",
+      "customer_name": "Shreya Mishra",
+      "customer_email": "shreya.mishra@example.com",
+      "phone": "+91-98XXXXXX24",
+      "order_date": "2026-11-15",
+      "items": [
+        { "sku": "SKU-BEAU-001", "product": "Vitamin C Face Serum 30ml", "qty": 1, "unit_price": 699 },
+        { "sku": "SKU-BEAU-003", "product": "Sunscreen SPF 50 (50ml)", "qty": 1, "unit_price": 549 }
+      ],
+      "total_amount": 1248,
+      "payment_method": "UPI",
+      "payment_status": "Paid",
+      "shipping_address": "Sector 21, Noida, Uttar Pradesh 201301",
+      "courier": "Ecom Express",
+      "tracking_id": null,
+      "order_status": "Processing",
+      "expected_delivery": "2026-11-19",
+      "delivered_on": null,
+      "tracking_history": [
+        { "timestamp": "2026-11-15 09:05", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-15 09:06", "status": "Payment Confirmed", "location": "Online" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    },
+    {
+      "order_id": "ORD-10025",
+      "customer_name": "Gaurav Tiwari",
+      "customer_email": "gaurav.tiwari@example.com",
+      "phone": "+91-98XXXXXX25",
+      "order_date": "2026-11-02",
+      "items": [
+        { "sku": "SKU-SPRT-003", "product": "Cricket Bat (English Willow)", "qty": 1, "unit_price": 5499 }
+      ],
+      "total_amount": 5499,
+      "payment_method": "Credit Card",
+      "payment_status": "Paid",
+      "shipping_address": "Sector 14, Gurugram, Haryana 122001",
+      "courier": "Delhivery",
+      "tracking_id": "DLV8812345705",
+      "order_status": "Delivered",
+      "expected_delivery": "2026-11-06",
+      "delivered_on": "2026-11-06",
+      "tracking_history": [
+        { "timestamp": "2026-11-02 16:40", "status": "Order Placed", "location": "Online" },
+        { "timestamp": "2026-11-03 10:00", "status": "Packed", "location": "Gurugram Warehouse" },
+        { "timestamp": "2026-11-03 18:30", "status": "Shipped", "location": "Gurugram Hub" },
+        { "timestamp": "2026-11-06 08:10", "status": "Out for Delivery", "location": "Sector 14" },
+        { "timestamp": "2026-11-06 10:45", "status": "Delivered", "location": "Customer Address" }
+      ],
+      "refund": { "status": "Not Applicable", "amount": 0, "reason": null, "requested_on": null, "completed_on": null, "refund_mode": null }
+    }
+  ],
+
+  "inventory": [
+    { "sku": "SKU-ELEC-001", "product": "Wireless Bluetooth Earbuds", "category": "Electronics", "unit_price": 1999, "stock_qty": 142, "reorder_level": 50, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "SoundTech Pvt Ltd" },
+    { "sku": "SKU-ELEC-002", "product": "Smart Watch Pro", "category": "Electronics", "unit_price": 4999, "stock_qty": 38, "reorder_level": 40, "warehouse": "Delhi", "stock_status": "Low Stock", "supplier": "WearX India" },
+    { "sku": "SKU-ELEC-003", "product": "Bluetooth Speaker 20W", "category": "Electronics", "unit_price": 2799, "stock_qty": 0, "reorder_level": 30, "warehouse": "Gurugram", "stock_status": "Out of Stock", "supplier": "SoundTech Pvt Ltd", "restock_expected": "2026-11-22" },
+    { "sku": "SKU-ELEC-004", "product": "Mechanical Keyboard RGB", "category": "Electronics", "unit_price": 3499, "stock_qty": 67, "reorder_level": 25, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "KeyForge" },
+    { "sku": "SKU-ELEC-005", "product": "USB-C Fast Charger 30W", "category": "Electronics", "unit_price": 899, "stock_qty": 310, "reorder_level": 100, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "VoltEdge" },
+    { "sku": "SKU-ELEC-006", "product": "Laptop Backpack 15.6 inch", "category": "Accessories", "unit_price": 1499, "stock_qty": 88, "reorder_level": 30, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "UrbanCarry" },
+    { "sku": "SKU-ELEC-007", "product": "Power Bank 20000mAh", "category": "Electronics", "unit_price": 1799, "stock_qty": 21, "reorder_level": 40, "warehouse": "Delhi", "stock_status": "Low Stock", "supplier": "VoltEdge" },
+    { "sku": "SKU-ELEC-008", "product": "Wireless Mouse", "category": "Electronics", "unit_price": 699, "stock_qty": 204, "reorder_level": 60, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "KeyForge" },
+    { "sku": "SKU-ELEC-009", "product": "LED Desk Lamp", "category": "Home & Living", "unit_price": 1199, "stock_qty": 56, "reorder_level": 20, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "BrightHome" },
+    { "sku": "SKU-FASH-001", "product": "Men's Cotton T-Shirt (Black, L)", "category": "Fashion", "unit_price": 599, "stock_qty": 420, "reorder_level": 150, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "FabWear" },
+    { "sku": "SKU-FASH-002", "product": "Women's Kurti Set (M)", "category": "Fashion", "unit_price": 1899, "stock_qty": 73, "reorder_level": 30, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "EthnicRoots" },
+    { "sku": "SKU-FASH-003", "product": "Women's Running Shoes (Size 6)", "category": "Fashion", "unit_price": 2499, "stock_qty": 15, "reorder_level": 20, "warehouse": "Delhi", "stock_status": "Low Stock", "supplier": "StrideCo" },
+    { "sku": "SKU-FASH-004", "product": "Men's Formal Shoes (Size 9)", "category": "Fashion", "unit_price": 2999, "stock_qty": 44, "reorder_level": 20, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "StrideCo" },
+    { "sku": "SKU-HOME-001", "product": "Non-Stick Cookware Set (5 pcs)", "category": "Home & Kitchen", "unit_price": 3299, "stock_qty": 29, "reorder_level": 15, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "KitchenKraft" },
+    { "sku": "SKU-HOME-002", "product": "Electric Kettle 1.5L", "category": "Home & Kitchen", "unit_price": 1299, "stock_qty": 95, "reorder_level": 30, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "KitchenKraft" },
+    { "sku": "SKU-HOME-003", "product": "Bedsheet Set King Size (Cotton)", "category": "Home & Living", "unit_price": 1699, "stock_qty": 112, "reorder_level": 40, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "CottonNest" },
+    { "sku": "SKU-HOME-004", "product": "Air Purifier HEPA", "category": "Home Appliances", "unit_price": 8999, "stock_qty": 9, "reorder_level": 10, "warehouse": "Delhi", "stock_status": "Low Stock", "supplier": "PureAir Systems" },
+    { "sku": "SKU-BEAU-001", "product": "Vitamin C Face Serum 30ml", "category": "Beauty", "unit_price": 699, "stock_qty": 260, "reorder_level": 80, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "GlowLabs" },
+    { "sku": "SKU-BEAU-002", "product": "Hair Dryer 1800W", "category": "Beauty", "unit_price": 1599, "stock_qty": 0, "reorder_level": 25, "warehouse": "Delhi", "stock_status": "Out of Stock", "supplier": "StyleMax", "restock_expected": "2026-11-20" },
+    { "sku": "SKU-BEAU-003", "product": "Sunscreen SPF 50 (50ml)", "category": "Beauty", "unit_price": 549, "stock_qty": 180, "reorder_level": 60, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "GlowLabs" },
+    { "sku": "SKU-BOOK-001", "product": "Atomic Habits (Paperback)", "category": "Books", "unit_price": 499, "stock_qty": 150, "reorder_level": 50, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "ReadWell Distributors" },
+    { "sku": "SKU-BOOK-002", "product": "Deep Work (Paperback)", "category": "Books", "unit_price": 399, "stock_qty": 92, "reorder_level": 30, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "ReadWell Distributors" },
+    { "sku": "SKU-GROC-001", "product": "Green Tea Bags (100 pcs)", "category": "Grocery", "unit_price": 349, "stock_qty": 500, "reorder_level": 150, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "LeafFresh" },
+    { "sku": "SKU-GROC-002", "product": "Organic Almonds 500g", "category": "Grocery", "unit_price": 649, "stock_qty": 240, "reorder_level": 80, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "NutriFarms" },
+    { "sku": "SKU-GROC-003", "product": "Cold-Pressed Coconut Oil 1L", "category": "Grocery", "unit_price": 499, "stock_qty": 130, "reorder_level": 40, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "NutriFarms" },
+    { "sku": "SKU-SPRT-001", "product": "Yoga Mat 6mm", "category": "Sports", "unit_price": 799, "stock_qty": 160, "reorder_level": 50, "warehouse": "Delhi", "stock_status": "In Stock", "supplier": "FitGear" },
+    { "sku": "SKU-SPRT-002", "product": "Resistance Bands Set (5 pcs)", "category": "Sports", "unit_price": 649, "stock_qty": 18, "reorder_level": 30, "warehouse": "Delhi", "stock_status": "Low Stock", "supplier": "FitGear" },
+    { "sku": "SKU-SPRT-003", "product": "Cricket Bat (English Willow)", "category": "Sports", "unit_price": 5499, "stock_qty": 12, "reorder_level": 10, "warehouse": "Gurugram", "stock_status": "In Stock", "supplier": "WillowCraft" }
+  ],
+
+  "policies": {
+    "return_window_days": 7,
+    "refund_processing_time": "5-7 business days after the returned item passes warehouse quality check",
+    "cod_refund_mode": "Bank transfer / UPI (customer provides details)",
+    "prepaid_refund_mode": "Credited to the original payment method",
+    "cancellation": "Free cancellation any time before the order is Shipped; after shipping, refuse delivery or raise a return request",
+    "non_returnable": "Opened beauty/personal-care products, grocery items, and products with physical damage caused after delivery",
+    "partial_refund": "Issued when one or more items in a multi-item order are missing, damaged or returned",
+    "support_hours": "Mon-Sat, 9:00 AM - 8:00 PM IST"
+  },
+
+  "sample_questions_the_agent_can_answer": {
+    "order_details": [
+      "What are the details of order ORD-10003?",
+      "What did Rahul Verma order and how much did he pay?",
+      "Which items are in order ORD-10010?",
+      "What is the total amount for ORD-10022 and which payment method was used?",
+      "Show me all orders placed by Priya Sharma.",
+      "Which orders were paid using Cash on Delivery?",
+      "What is the shipping address for order ORD-10007?",
+      "Which orders contain the Smart Watch Pro?"
+    ],
+    "order_tracking_and_history": [
+      "Where is my order ORD-10003 right now?",
+      "What is the tracking ID and courier for ORD-10013?",
+      "When will order ORD-10015 be delivered?",
+      "Show the full tracking history of ORD-10002.",
+      "Has order ORD-10020 been delivered yet?",
+      "Why was my order ORD-10018 cancelled?",
+      "Why did delivery fail for ORD-10016 on 9 November?",
+      "Which orders are currently Out for Delivery?",
+      "Which orders are still in Processing status?",
+      "When was ORD-10012 delivered and was it before the expected date?",
+      "Which courier handles deliveries to Gurugram addresses?"
+    ],
+    "refund_status": [
+      "What is the refund status of order ORD-10009?",
+      "Has the refund for ORD-10002 been completed? When?",
+      "Why was the refund for ORD-10008 rejected?",
+      "How much refund was issued for ORD-10023 and why was it partial?",
+      "Which orders have refunds currently in Processing or Approved status?",
+      "When was the refund for ORD-10014 credited and to which payment mode?",
+      "What is the refund status for Sneha Kapoor's cookware order?",
+      "Why was Harsh Agarwal's refund rejected after return?",
+      "How long does a refund take after return pickup?",
+      "Can I cancel order ORD-10017 and get a refund?"
+    ],
+    "stock_and_inventory": [
+      "Is the Bluetooth Speaker 20W in stock?",
+      "How many Wireless Bluetooth Earbuds are available?",
+      "Which products are currently out of stock and when will they be restocked?",
+      "Which items are low on stock (below reorder level)?",
+      "What is the total stock quantity in the Gurugram warehouse?",
+      "How many units of Smart Watch Pro are left?",
+      "Which supplier provides the Power Bank 20000mAh?",
+      "What is the price and stock of Yoga Mat 6mm?",
+      "List all products in the Beauty category with their stock status.",
+      "What is the overall inventory value (stock_qty x unit_price) across all SKUs?",
+      "Which warehouse stocks the Air Purifier HEPA and how many are left?"
+    ],
+    "policy_questions": [
+      "What is the return window?",
+      "How are COD order refunds processed?",
+      "Can I cancel an order after it has been shipped?",
+      "Which products are non-returnable?",
+      "What are the customer support hours?"
+    ]
+  }
+}
