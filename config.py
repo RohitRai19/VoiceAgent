@@ -16,6 +16,8 @@ CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
+# Small fast model that writes the chat headings (falls back to GROQ_LLM_MODEL if unavailable).
+TITLE_MODEL = os.getenv("TITLE_MODEL", "llama-3.1-8b-instant")
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DB = os.getenv("MONGODB_DB", "voicedb")
@@ -33,6 +35,9 @@ JSON_SKIP_KEYS = {k.strip() for k in os.getenv("JSON_SKIP_KEYS", "sample_questio
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 KNOWLEDGE_DIR.mkdir(exist_ok=True)
 HISTORY_MESSAGES =int(os.getenv("HISTORY_MESSAGES", "10"))  # prior messages sent to the LLM
+# true: questions unrelated to the files are answered from the model's own knowledge
+# (labelled as such). false: every answer must come from the files.
+ALLOW_GENERAL_KNOWLEDGE = os.getenv("ALLOW_GENERAL_KNOWLEDGE", "true").lower() == "true"
 # Includes the model's hidden reasoning tokens, so long calculations need headroom.
 MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "6000"))
 MAX_UPLOAD_MB =int(os.getenv("MAX_UPLOAD_MB", "25"))

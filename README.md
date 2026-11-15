@@ -30,6 +30,7 @@ MongoDB must be running (`MONGODB_URI`). The first upload downloads the embeddin
 | `LANGSMITH_PROJECT` | `voiceagent-rag-chat` | LangSmith project that receives the traces |
 | `LANGSMITH_ENDPOINT` | US region | Set to `https://eu.api.smith.langchain.com` for EU accounts |
 | `MONGODB_URI` / `MONGODB_DB` | `mongodb://localhost:27017` / `voicedb` | Where threads and messages are saved |
+| `ALLOW_GENERAL_KNOWLEDGE` | `true` | `true`: questions unrelated to the files are answered from the model's own knowledge, labelled "General knowledge, not from your files". `false`: every answer must come from the files |
 | `EMBED_MODEL` | multilingual MiniLM | fastembed model. Changing it requires deleting `data/chroma/` and re-uploading |
 | `TOP_K`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, `HISTORY_MESSAGES`, `MAX_UPLOAD_MB` | 5, 1000, 150, 10, 25 | Tuning |
 

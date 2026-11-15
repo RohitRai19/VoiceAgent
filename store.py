@@ -34,7 +34,7 @@ def _iso(dt: datetime | None) -> str | None:
 
 def create_thread(title: str = "New chat") -> dict:
     doc = {"_id": str(uuid.uuid4()), "title": title, "created_at": _now(), "updated_at": _now(),
-           "message_count": 0, "total_tokens": 0}
+           "message_count": 0, "total_tokens": 0, "pinned": False}
     threads.insert_one(doc)
     return _thread_out(doc)
 
@@ -45,11 +45,17 @@ def get_thread(thread_id: str) -> dict | None:
 
 
 def list_threads() -> list[dict]:
-    return [_thread_out(d) for d in threads.find().sort("updated_at", DESCENDING).limit(200)]
+    # Pinned chats first, then most recently used.
+    cur = threads.find().sort([("pinned", DESCENDING), ("updated_at", DESCENDING)]).limit(200)
+    return [_thread_out(d) for d in cur]
 
 
 def rename_thread(thread_id: str, title: str) -> None:
     threads.update_one({"_id": thread_id}, {"$set": {"title": title[:80]}})
+
+
+def pin_thread(thread_id: str, pinned: bool) -> None:
+    threads.update_one({"_id": thread_id}, {"$set": {"pinned": bool(pinned)}})
 
 
 def delete_thread(thread_id: str) -> bool:
@@ -65,13 +71,14 @@ def _thread_out(doc: dict) -> dict:
         "updated_at": _iso(doc.get("updated_at")),
         "message_count": doc.get("message_count", 0),
         "total_tokens": doc.get("total_tokens", 0),
+        "pinned": bool(doc.get("pinned", False)),
     }
 
 
 # ---------- messages ----------
 
 def add_message(thread_id: str, role: str, content: str, *, sources: list[dict] | None = None,
-                usage: dict | None = None, run_id: str | None = None) -> dict:
+                usage: dict | None = None, run_id: str | None = None, duration_ms: int | None = None) -> dict:
     doc = {
         "_id": str(uuid.uuid4()),
         "thread_id": thread_id,
@@ -80,6 +87,7 @@ def add_message(thread_id: str, role: str, content: str, *, sources: list[dict] 
         "sources": sources or [],
         "usage": usage or {},
         "run_id": run_id,
+        "duration_ms": duration_ms,
         "created_at": _now(),
     }
     messages.insert_one(doc)
@@ -108,6 +116,7 @@ def _message_out(doc: dict) -> dict:
         "sources": doc.get("sources", []),
         "usage": doc.get("usage", {}),
         "run_id": doc.get("run_id"),
+        "duration_ms": doc.get("duration_ms"),
         "created_at": _iso(doc.get("created_at")),
     }
 

@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -53,6 +54,8 @@ def _sync_knowledge_folder() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await asyncio.to_thread(_sync_knowledge_folder)
+    # Load the embedding model now, so the first question does not pay for it.
+    await asyncio.to_thread(rag.embed, ["warm up"])
     yield
 
 
@@ -65,7 +68,8 @@ class ChatIn(BaseModel):
 
 
 class ThreadPatch(BaseModel):
-    title: str = Field(min_length=1, max_length=80)
+    title: str | None = Field(default=None, min_length=1, max_length=80)
+    pinned: bool | None = None
 
 
 def _sse(event: str, data: dict) -> str:
@@ -152,7 +156,10 @@ async def get_thread(thread_id: str):
 async def rename_thread(thread_id: str, body: ThreadPatch):
     if store.get_thread(thread_id) is None:
         raise HTTPException(404, "thread not found")
-    store.rename_thread(thread_id, body.title.strip())
+    if body.title is not None and body.title.strip():
+        store.rename_thread(thread_id, body.title.strip())
+    if body.pinned is not None:
+        store.pin_thread(thread_id, body.pinned)
     return store.get_thread(thread_id)
 
 
@@ -168,6 +175,7 @@ async def delete_thread(thread_id: str):
 @app.post("/api/chat")
 async def chat_turn(body: ChatIn):
     """Server-sent events: meta -> sources -> token... -> done (or error)."""
+    started = time.perf_counter()
     question = body.message.strip()
     if not question:
         raise HTTPException(400, "empty message")
@@ -181,7 +189,8 @@ async def chat_turn(body: ChatIn):
     thread_id = thread["thread_id"]
 
     history = store.get_messages(thread_id, limit=config.HISTORY_MESSAGES)
-    if thread["message_count"] == 0:
+    first_turn = thread["message_count"] == 0
+    if first_turn:  # temporary heading until the generated one arrives with the answer
         title = question[:60] + ("…" if len(question) > 60 else "")
         store.rename_thread(thread_id, title)
         thread["title"] = title
@@ -197,12 +206,15 @@ async def chat_turn(body: ChatIn):
         # Runs to completion even if the browser disconnects, so the reply is always saved.
         try:
             result = chat.run_turn(
-                thread_id, question, history, emit,
+                thread_id, question, history, emit, first_turn,
                 # LangSmith groups runs that share this metadata into one Thread.
                 langsmith_extra={"metadata": {"thread_id": thread_id, "session_id": thread_id}},
             )
+            if result.get("title"):
+                store.rename_thread(thread_id, result["title"])
             saved = store.add_message(thread_id, "assistant", result["answer"], sources=result["sources"],
-                                      usage=result["usage"], run_id=result["run_id"])
+                                      usage=result["usage"], run_id=result["run_id"],
+                                      duration_ms=int((time.perf_counter() - started) * 1000))
             emit("done", {"message": saved, "thread": store.get_thread(thread_id)})
         except Exception as exc:
             log.exception("chat turn failed")

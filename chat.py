@@ -24,11 +24,20 @@ def _get_llm() -> ChatGroq:
     return _llm
 
 
+GENERAL_MARKER = "General knowledge, not from your files."
+
+STRICT_RULES = """- Answer ONLY from the numbered context excerpts below. Do not use outside knowledge and do not guess.
+- If the excerpts do not contain the answer, say you could not find it in the uploaded files, and mention what related information is available if any. Never invent an order, product, date, amount or status."""
+
+GENERAL_RULES = """- First decide what kind of question this is.
+- FILE QUESTION: anything about the data the files cover (for example orders, customers, tracking, refunds, payments, stock, products the store sells, prices, suppliers, store policies), including a specific order ID, SKU or customer name. Answer these ONLY from the numbered context excerpts below. If the excerpts do not contain the answer, say you could not find it in the uploaded files. Never invent or guess an order, customer, product, date, amount or status, and never fill gaps with outside knowledge.
+- GENERAL QUESTION: anything unrelated to the files' data (general knowledge, definitions, how-to, coding, writing, casual chat). Answer these normally from your own knowledge. Begin the reply with this exact first line in italics: _""" + GENERAL_MARKER + """_ Then answer. Do not cite excerpts in such a reply.
+- If unsure which kind it is, treat it as a FILE QUESTION."""
+
 ANSWER_PROMPT = """You are an assistant that answers questions using the user's own uploaded files.
 
 Rules:
-- Answer ONLY from the numbered context excerpts below. Do not use outside knowledge and do not guess.
-- If the excerpts do not contain the answer, say you could not find it in the uploaded files, and mention what related information is available if any. Never invent an order, product, date, amount or status.
+{knowledge_rules}
 - Excerpts titled "Overview table" list EVERY record. Use them for counting, listing, filtering and totals, and check every row before answering. Use the detailed record excerpts for specifics such as tracking history.
 - When you add or multiply numbers, show the figures you used so the result can be checked.
 - If the files contain a "last updated" date, treat it as today when a question depends on the current date.
@@ -42,7 +51,32 @@ Context excerpts:
 
 CONDENSE_PROMPT = """Rewrite the user's latest message as one standalone search query that makes sense without the conversation. Keep the user's language. Resolve words like "it", "that", "he", "this one" using the conversation. If the message is already standalone, return it unchanged. Output only the query, nothing else."""
 
-NO_CONTEXT = "(no files have been uploaded yet, or nothing relevant was found)"
+TITLE_PROMPT = """Write a short heading for this conversation, like a chat title in a sidebar: 2 to 5 words that name the topic. Use the user's language and script: if the user wrote Hindi in Latin letters (Hinglish), write the heading in Latin letters too, never in Devanagari. No quotes, no ending punctuation, no words like "Chat about". Output only the heading."""
+
+_title_llm: ChatGroq | None = None
+
+
+def generate_title(question: str, answer: str) -> tuple[str | None, dict]:
+    """Short heading for a new chat. Uses the small title model, then the main model, else None."""
+    global _title_llm
+    if _title_llm is None:
+        _title_llm = ChatGroq(model=config.TITLE_MODEL, api_key=config.GROQ_API_KEY,
+                              temperature=0.2, max_tokens=300, max_retries=0)
+    messages = [SystemMessage(TITLE_PROMPT),
+                HumanMessage(f"User: {question[:500]}\n\nAssistant: {answer[:500]}")]
+    for llm in (_title_llm, _get_llm()):
+        try:
+            reply = llm.invoke(messages, config={"run_name": "generate_title"})
+        except Exception:
+            continue
+        lines = (reply.content or "").strip().splitlines()
+        title = lines[0].strip().strip("\"'*_#`“”").rstrip(".").strip() if lines else ""
+        if title:
+            return title[:60], _usage(reply)
+    return None, {}
+
+
+NO_CONTEXT ="(no files have been uploaded yet, or nothing relevant was found)"
 
 
 def _usage(msg) -> dict:
@@ -96,7 +130,7 @@ def _trace_inputs(inputs: dict) -> dict:
 
 @traceable(run_type="chain", name="rag_chat_turn", process_inputs=_trace_inputs)
 def run_turn(thread_id: str, question: str, history: list[dict],
-             on_event: Callable[[str, dict], None] | None = None) -> dict:
+             on_event: Callable[[str, dict], None] | None = None, make_title: bool = False) -> dict:
     """Answer `question` for a thread. `on_event(kind, data)` receives 'sources' and 'token' events."""
     emit = on_event or (lambda kind, data: None)
     llm = _get_llm()
@@ -117,7 +151,11 @@ def run_turn(thread_id: str, question: str, history: list[dict],
     emit("sources", {"sources": sources, "search_query": search_query})
 
     # 3. Answer, streaming tokens as they arrive
-    prompt = [SystemMessage(ANSWER_PROMPT.format(context=_format_context(docs))), *past, HumanMessage(question)]
+    system = ANSWER_PROMPT.format(
+        knowledge_rules=GENERAL_RULES if config.ALLOW_GENERAL_KNOWLEDGE else STRICT_RULES,
+        context=_format_context(docs),
+    )
+    prompt = [SystemMessage(system), *past, HumanMessage(question)]
     full = None
     for chunk in llm.stream(prompt, config={"run_name": "answer"}):
         full = chunk if full is None else full + chunk
@@ -135,8 +173,21 @@ def run_turn(thread_id: str, question: str, history: list[dict],
         answer += note
         emit("token", {"text": note})
 
+    # A general-knowledge reply did not use the files, so do not list file sources under it.
+    from_files = not answer.lstrip("_* \n").lower().startswith(GENERAL_MARKER.lower().rstrip("."))
+    if not from_files:
+        sources = []
+
+    # The answer has already streamed to the user, so this does not delay what they read.
+    title = None
+    if make_title:
+        title, title_usage = generate_title(question, answer)
+        usage = _add_usage(usage, title_usage)
+
     run = get_current_run_tree()
     return {
+        "title": title,
+        "from_files": from_files,
         "answer": answer,
         "sources": sources,
         "usage": usage,
