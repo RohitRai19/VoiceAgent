@@ -5,19 +5,23 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import config  # noqa: F401  (loads .env and configures LangSmith before other imports)
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from groq import Groq
 from pydantic import BaseModel, Field
 
 import chat
+import mcp_client
 import rag
 import store
+import tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("app")
@@ -56,6 +60,9 @@ async def lifespan(_: FastAPI):
     await asyncio.to_thread(_sync_knowledge_folder)
     # Load the embedding model now, so the first question does not pay for it.
     await asyncio.to_thread(rag.embed, ["warm up"])
+    # Start the Salesforce MCP server (if configured) and hand its tools to the chat.
+    chat.TOOLS = await asyncio.to_thread(mcp_client.load_mcp_tools)
+    log.info("salesforce tools: %s", ", ".join(t.name for t in chat.TOOLS) or "none (not configured or failed)")
     yield
 
 
@@ -65,11 +72,27 @@ app = FastAPI(title="RAG Chat", lifespan=lifespan)
 class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     thread_id: str | None = None
+    voice: bool = False  # asked with the mic: reply is short, spoken-style, Hindi for Hindi questions
+
+
+class TtsIn(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
 
 
 class ThreadPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=80)
     pinned: bool | None = None
+
+
+def _friendly_error(exc: Exception) -> str:
+    text = str(exc)
+    if "rate_limit_exceeded" in text or "Error code: 429" in text:
+        wait = re.search(r"try again in ([0-9hms.]+)", text)
+        when = f" Try again in about {wait.group(1).split('.')[0]}s." if wait else " Try again later."
+        if "tokens per day" in text:
+            return "Groq's daily token limit for the AI model is used up." + when
+        return "Groq is rate-limiting requests right now." + when
+    return text
 
 
 def _sse(event: str, data: dict) -> str:
@@ -98,6 +121,12 @@ async def health():
         "chunks": rag.chunk_count(),
         "langsmith_tracing": config.TRACING_ENABLED,
         "langsmith_project": config.LANGSMITH_PROJECT,
+        "salesforce": {
+            "connected": bool(chat.TOOLS),
+            "auth": "connected app" if mcp_client.connected_app_configured()
+                    else (f"cli alias {config.SF_ORG_ALIAS}" if config.SF_ORG_ALIAS else "not configured"),
+            "tools": [t.name for t in chat.TOOLS],
+        },
     }
 
 
@@ -130,6 +159,119 @@ async def delete_file(file_id: str):
         raise HTTPException(404, "file not found")
     await asyncio.to_thread(rag.delete_file, file_id)
     return {"ok": True}
+
+
+# ---------- voice input ----------
+
+_stt_client: Groq | None = None
+
+
+# Phrases Whisper is known to invent from silence or background noise.
+_HALLUCINATIONS = {
+    "thank you", "thanks for watching", "thank you for watching", "thank you so much for watching",
+    "please subscribe", "subscribe", "bye", "you", "okay", "ok", "so", "uh", "um", "hmm",
+    "subtitles by the amara.org community", "धन्यवाद",
+}
+
+
+_SOUND_TAG_RE = re.compile(r"[\[(*♪][^\])*♪]{0,40}[\])*♪]")  # [MUSIC], (siren blares), *cough*
+_CAPS_TAIL_RE = re.compile(r"(?:\s+[A-Z]{3,}){1,4}\s*$")  # "... right now? SIREN BLARES"
+
+
+def _strip_sound_tags(text: str) -> str:
+    text = _SOUND_TAG_RE.sub(" ", text)
+    tail = _CAPS_TAIL_RE.search(text)
+    # Only drop a trailing ALL-CAPS run when it follows finished speech and has no digits/IDs.
+    if tail and re.search(r"[.?!।]\s*$", text[: tail.start()]):
+        text = text[: tail.start()]
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _field(obj, name, default=None):
+    return obj.get(name, default) if isinstance(obj, dict) else getattr(obj, name, default)
+
+
+def _transcribe(filename: str, data: bytes) -> str:
+    global _stt_client
+    if _stt_client is None:
+        _stt_client = Groq(api_key=config.GROQ_API_KEY)
+    kwargs = {"file": (filename, data), "model": config.GROQ_STT_MODEL, "temperature": 0.0,
+              "response_format": "verbose_json"}
+    if config.STT_PROMPT:
+        kwargs["prompt"] = config.STT_PROMPT  # vocabulary hint: order IDs, couriers, store name
+    if config.STT_LANGUAGE:
+        kwargs["language"] = config.STT_LANGUAGE
+    resp = _stt_client.audio.transcriptions.create(**kwargs)
+
+    segments = _field(resp, "segments") or []
+    if segments:
+        # Keep only segments Whisper is confident contain real speech.
+        kept = [
+            _field(s, "text", "") for s in segments
+            if (_field(s, "no_speech_prob", 0) or 0) < config.STT_MAX_NO_SPEECH
+            and (_field(s, "avg_logprob", 0) or 0) > config.STT_MIN_LOGPROB
+        ]
+        text = " ".join(t.strip() for t in kept if t and t.strip())
+    else:
+        text = (_field(resp, "text", "") or "").strip()
+    text = _strip_sound_tags(text)
+
+    normalized =text.lower().strip(" .!?,।")
+    if not normalized or normalized in _HALLUCINATIONS:
+        return ""
+    if config.STT_PROMPT:
+        # Whisper sometimes "hears" the vocabulary hint in noise. Drop output made mostly of hint words.
+        hint = set(re.findall(r"\w+", config.STT_PROMPT.lower()))
+        words = re.findall(r"\w+", normalized)
+        if words and sum(w in hint for w in words) / len(words) >= 0.6:
+            return ""
+    return text
+
+
+@app.post("/api/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    """Speech to text for the microphone button (Groq Whisper)."""
+    data = await audio.read()
+    if not data:
+        raise HTTPException(400, "empty audio")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(413, "recording is too long")
+    try:
+        text = await asyncio.to_thread(_transcribe, audio.filename or "speech.webm", data)
+    except Exception as exc:
+        log.exception("transcription failed")
+        raise HTTPException(502, f"Could not transcribe the recording: {exc}")
+    return {"text": text}
+
+
+@app.post("/api/tts")
+async def text_to_speech(body: TtsIn):
+    """MP3 of an answer, read by a Hindi voice (Devanagari text) or an Indian-English voice."""
+    try:
+        audio, voice = await tts.synthesize(body.text)
+    except Exception as exc:
+        log.exception("tts failed")
+        raise HTTPException(502, f"Could not create the spoken reply: {exc}")
+    if not audio:
+        raise HTTPException(422, "nothing to speak")
+    return Response(audio, media_type="audio/mpeg", headers={"X-Voice": voice, "Cache-Control": "no-store"})
+
+
+@app.get("/api/tts/stream")
+async def text_to_speech_stream(text: str = Query(..., min_length=1, max_length=4000)):
+    """Streaming MP3 for one sentence: the browser plays it while it is still arriving.
+    GET so an <audio> element can load it directly."""
+    if not tts.clean_for_speech(text):
+        return Response(status_code=204)  # nothing speakable (only markdown, a citation…)
+
+    async def body():
+        try:
+            async for chunk in tts.stream(text):
+                yield chunk
+        except Exception:
+            log.exception("tts stream failed")
+
+    return StreamingResponse(body(), media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
 
 # ---------- threads ----------
@@ -206,7 +348,7 @@ async def chat_turn(body: ChatIn):
         # Runs to completion even if the browser disconnects, so the reply is always saved.
         try:
             result = chat.run_turn(
-                thread_id, question, history, emit, first_turn,
+                thread_id, question, history, emit, first_turn, body.voice,
                 # LangSmith groups runs that share this metadata into one Thread.
                 langsmith_extra={"metadata": {"thread_id": thread_id, "session_id": thread_id}},
             )
@@ -214,11 +356,12 @@ async def chat_turn(body: ChatIn):
                 store.rename_thread(thread_id, result["title"])
             saved = store.add_message(thread_id, "assistant", result["answer"], sources=result["sources"],
                                       usage=result["usage"], run_id=result["run_id"],
-                                      duration_ms=int((time.perf_counter() - started) * 1000))
+                                      duration_ms=int((time.perf_counter() - started) * 1000),
+                                      tools=result.get("tools"))
             emit("done", {"message": saved, "thread": store.get_thread(thread_id)})
         except Exception as exc:
             log.exception("chat turn failed")
-            emit("error", {"message": str(exc)})
+            emit("error", {"message": _friendly_error(exc)})
         finally:
             emit("__end__", None)
 

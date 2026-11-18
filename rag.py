@@ -22,6 +22,17 @@ SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | {".pdf", ".docx", ".csv"}
 
 # Code-like tokens: contain a digit, e.g. ORD-10003, SKU-ELEC-001, DLV8812345671
 _CODE_RE = re.compile(r"\b(?=[A-Za-z0-9\-_]*\d)[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b")
+# Spoken / dictated IDs: "SKU ELEC 003" -> "SKU-ELEC-003", "ORD 10013" -> "ORD-10013".
+_SPOKEN_ID_RE = re.compile(r"\b(sku|ord)\s*[- ]\s*(?:(?!ord\b)([a-z]{2,5})\s*[- ]\s*)?(\d{3,})\b", re.IGNORECASE)
+# Speech engines often space out digits and letters: "1 0 0 1 3", "o r d".
+_SPACED_DIGITS_RE = re.compile(r"\b\d(?:\s\d){2,}\b")
+_SPACED_ORD_RE = re.compile(r"\bo\.?\s*r\.?\s*d\.?(?=\s|-|\d|$)", re.IGNORECASE)
+
+
+def normalize_ids(text: str) -> str:
+    text = _SPACED_DIGITS_RE.sub(lambda m: m.group(0).replace(" ", ""), text)
+    text = _SPACED_ORD_RE.sub("ORD", text)
+    return _SPOKEN_ID_RE.sub(lambda m: "-".join(p for p in m.groups() if p).upper(), text)
 
 _lock = threading.Lock()
 _embedder: TextEmbedding | None = None
@@ -234,6 +245,8 @@ def _json_sections(obj) -> list[tuple[str, dict]]:
 
 def index_file(filename: str, data: bytes) -> tuple[str, int]:
     """Chunk, embed and store a file. Returns (file_id, number_of_chunks)."""
+    global _vocab
+    _vocab = None
     file_id = str(uuid.uuid4())
     texts: list[str] = []
     metas: list[dict] = []
@@ -260,7 +273,37 @@ def index_file(filename: str, data: bytes) -> tuple[str, int]:
 
 
 def delete_file(file_id: str) -> None:
+    global _vocab
     _get_collection().delete(where={"file_id": file_id})
+    _vocab = None
+
+
+# ---------- "is this question about the files?" ----------
+# Names, products, couriers, cities, statuses... taken from short values in the indexed JSON
+# records. A question mentioning one of them is treated as a question about the files.
+_vocab: set[str] | None = None
+_VOCAB_STOP = {"none", "applicable", "online", "paid", "with", "from", "this", "that", "your", "have",
+               "will", "after", "before", "original", "payment", "method", "customer", "address"}
+_WORD_RE = re.compile(r"[a-zऀ-ॿ]{4,}")
+
+
+def known_terms() -> set[str]:
+    global _vocab
+    if _vocab is None:
+        words: set[str] = set()
+        records = _get_collection().get(where={"kind": "record"}, include=["documents"])["documents"]
+        for doc in records:
+            for line in doc.splitlines():
+                key, sep, value = line.partition(":")
+                value = value.strip()
+                if sep and 0 < len(value) <= 60 and not key.strip().startswith("-"):
+                    words.update(_WORD_RE.findall(value.lower()))
+        _vocab = words - _VOCAB_STOP
+    return _vocab
+
+
+def mentions_known_terms(text: str) -> bool:
+    return bool(set(_WORD_RE.findall(text.lower())) & known_terms())
 
 
 def chunk_count() -> int:
@@ -270,7 +313,7 @@ def chunk_count() -> int:
 # ---------- retrieval ----------
 
 @traceable(run_type="retriever", name="retrieve_chunks")
-def retrieve(query: str, k: int = config.TOP_K) -> list[dict]:
+def retrieve(query: str, k: int = config.TOP_K, pin_tables: bool = True) -> list[dict]:
     """Top-k chunks for `query`, in the document shape LangSmith renders for retriever runs."""
     col = _get_collection()
     total = col.count()
@@ -295,8 +338,15 @@ def retrieve(query: str, k: int = config.TOP_K) -> list[dict]:
     #    cannot tell such codes apart, so fetch the chunks that literally contain them.
     #    A code found in many chunks (a date, a common number) is not an ID and is ignored.
     exact: list[tuple[str, str, dict]] = []
-    for code in [t for t in dict.fromkeys(_CODE_RE.findall(query)) if len(t) >= 4][:5]:
-        for variant in dict.fromkeys([code, code.upper()]):
+    # Spoken IDs arrive with spaces ("SKU ELEC 003", "ORD 10013"): join them into "SKU-ELEC-003".
+    id_query = normalize_ids(query)
+    for code in [t for t in dict.fromkeys(_CODE_RE.findall(id_query)) if len(t) >= 4][:5]:
+        # Speech and quick typing drop the hyphen ("ORD10003"), so also try "ORD-10003"
+        # and the bare number.
+        upper = code.upper()
+        hyphenated = re.sub(r"(?<=[A-Z])(?=\d)", "-", upper)
+        number = max(re.findall(r"\d{5,}", code), key=len, default=None)
+        for variant in dict.fromkeys(v for v in (code, upper, hyphenated, number) if v):
             hit = col.get(where_document={"$contains": variant}, where=where, limit=MAX_ID_HITS + 1,
                           include=["documents", "metadatas"])
             if 0 < len(hit["ids"]) <= MAX_ID_HITS:
@@ -312,7 +362,7 @@ def retrieve(query: str, k: int = config.TOP_K) -> list[dict]:
     #    large, so they are only sent for questions without a specific ID (listing, counting,
     #    totals, lookups by name), and only for the sections the search actually matched.
     if pinned:
-        sections = set() if exact else {(m or {}).get("section") for _, _, m, _ in semantic}
+        sections = set() if (exact or not pin_tables) else {(m or {}).get("section") for _, _, m, _ in semantic}
         order = sorted(range(len(ov["ids"])), key=lambda i: (ov["metadatas"][i]["file_id"], ov["metadatas"][i]["chunk"]))
         for i in order:
             meta = ov["metadatas"][i]

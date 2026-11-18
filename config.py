@@ -16,8 +16,28 @@ CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
+# Used automatically when the main model fails (e.g. its daily token limit is used up).
+# It has its own separate Groq quota. Empty = no fallback.
+GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b").strip()
+# Salesforce (read by salesforce_case_server.py / mcp_client.py from the environment).
+SF_ORG_ALIAS = os.getenv("SF_ORG_ALIAS", "").strip()
+# Spoken replies (edge-tts). Hindi voice for Devanagari answers, Indian-English otherwise.
+TTS_VOICE_HI = os.getenv("TTS_VOICE_HI", "hi-IN-SwaraNeural")
+TTS_VOICE_EN = os.getenv("TTS_VOICE_EN", "en-IN-NeerjaNeural")
+TTS_RATE = os.getenv("TTS_RATE", "+0%")  # e.g. "+10%" to speak faster
+TTS_MAX_CHARS = int(os.getenv("TTS_MAX_CHARS", "2500"))
+# Speech-to-text model for the microphone button.
+GROQ_STT_MODEL = os.getenv("GROQ_STT_MODEL", "whisper-large-v3")
+# Optional vocabulary hint for Whisper. Off by default: in testing it made Whisper "hear" the
+# hint itself in background noise and mangled spoken order numbers (10013 -> 100013).
+STT_PROMPT = os.getenv("STT_PROMPT", "").strip()
+# Empty = auto-detect (works for English, Hindi and Hinglish). Set e.g. "en" or "hi" to force one.
+STT_LANGUAGE = os.getenv("STT_LANGUAGE", "").strip()
+# Segments above this no-speech probability, or below this confidence, are treated as noise.
+STT_MAX_NO_SPEECH = float(os.getenv("STT_MAX_NO_SPEECH", "0.6"))
+STT_MIN_LOGPROB = float(os.getenv("STT_MIN_LOGPROB", "-1.0"))
 # Small fast model that writes the chat headings (falls back to GROQ_LLM_MODEL if unavailable).
-TITLE_MODEL = os.getenv("TITLE_MODEL", "llama-3.1-8b-instant")
+TITLE_MODEL = os.getenv("TITLE_MODEL", "openai/gpt-oss-20b")
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DB = os.getenv("MONGODB_DB", "voicedb")

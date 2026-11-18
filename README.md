@@ -1,10 +1,13 @@
 # Chat with your files (RAG)
 
-A chat app that answers only from the files you upload.
+A chat app that answers from the files you upload, can work with Salesforce support Cases, and talks back in Hindi or English.
 
 - **RAG**: files are split into chunks, embedded locally (fastembed, no API key) and stored in Chroma (`data/chroma/`). Each question retrieves the best-matching chunks and Groq answers from them, with citations.
 - **Chat history with thread IDs**: every chat is a thread in MongoDB (`chat_threads`, `chat_messages`). Each message stores its sources, token usage and LangSmith run ID.
 - **LangSmith tracing**: every turn is one trace (`rag_chat_turn`) containing the question rewrite, the retrieval and the LLM call with token counts. Traces carry the thread ID, so LangSmith's **Threads** tab shows whole conversations.
+- **Voice in Hindi and English**: ask with the mic; the answer is written in the chat and spoken aloud live, sentence by sentence (Hindi voice for Hindi/Hinglish questions).
+- **Salesforce (MCP)**: an MCP server with tools for support Cases and read-only SOQL, used by the chat when Salesforce keys are set.
+- General questions are answered from the model's own knowledge (labelled), with a fallback model when Groq's limits are reached.
 
 ## Setup
 
@@ -30,9 +33,15 @@ MongoDB must be running (`MONGODB_URI`). The first upload downloads the embeddin
 | `LANGSMITH_PROJECT` | `voiceagent-rag-chat` | LangSmith project that receives the traces |
 | `LANGSMITH_ENDPOINT` | US region | Set to `https://eu.api.smith.langchain.com` for EU accounts |
 | `MONGODB_URI` / `MONGODB_DB` | `mongodb://localhost:27017` / `voicedb` | Where threads and messages are saved |
+| `GROQ_FALLBACK_MODEL` | `openai/gpt-oss-20b` | Used automatically when the main model fails, e.g. its daily token limit is used up. Separate Groq quota. Empty = off |
+| `TITLE_MODEL` | `openai/gpt-oss-20b` | Writes the chat headings |
+| `SF_LOGIN_URL`, `SF_CLIENT_ID`, `SF_CLIENT_SECRET` | empty | Salesforce Connected App (client credentials). When all three are set, Salesforce is used through them |
+| `SF_ORG_ALIAS` | empty | Otherwise, a Salesforce CLI login alias for this app (`sf org login web -a <alias>`). All Salesforce settings empty = Salesforce off |
+| `TTS_VOICE_HI` / `TTS_VOICE_EN` | `hi-IN-SwaraNeural` / `en-IN-NeerjaNeural` | Voices for spoken replies (Hindi answers / English answers). Any edge-tts voice name works, e.g. `hi-IN-MadhurNeural` for a male Hindi voice |
+| `TTS_RATE` | `+0%` | Speaking speed, e.g. `+10%` |
 | `ALLOW_GENERAL_KNOWLEDGE` | `true` | `true`: questions unrelated to the files are answered from the model's own knowledge, labelled "General knowledge, not from your files". `false`: every answer must come from the files |
 | `EMBED_MODEL` | multilingual MiniLM | fastembed model. Changing it requires deleting `data/chroma/` and re-uploading |
-| `TOP_K`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, `HISTORY_MESSAGES`, `MAX_UPLOAD_MB` | 5, 1000, 150, 10, 25 | Tuning |
+| `TOP_K`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, `HISTORY_MESSAGES`, `MAX_UPLOAD_MB` | 4, 1000, 150, 10, 25 | Tuning |
 
 Supported files: PDF (text-based, not scanned), DOCX, CSV, TXT, MD, JSON, HTML and common code/config files.
 
@@ -56,6 +65,19 @@ Questions about one order use about 1,800 tokens; listing questions over all ord
 - `POST /api/chat` `{message, thread_id?}` -> server-sent events `meta`, `sources`, `token`, `done` / `error`. Omit `thread_id` to start a new thread.
 - `GET /api/threads`, `POST /api/threads`, `GET|PATCH|DELETE /api/threads/{thread_id}`
 - `GET /api/files`, `POST /api/files` (multipart `files`), `DELETE /api/files/{file_id}`
+- `POST /api/transcribe` (multipart `audio`) -> `{text}`; Groq Whisper (`GROQ_STT_MODEL`), used by the mic button only in browsers without built-in speech recognition
+
+### Salesforce (MCP)
+
+`salesforce_case_server.py` is this app's MCP server, with tools to create, read, search and update support Cases, add comments, list picklist values and run read-only SOQL. `mcp_client.py` starts it when the app starts and gives its tools to the chat model, so you can ask things like "show my latest cases", "what is the status of case 1069" or "open a case for order ORD-10004, the pan arrived dented". The model only creates or changes records when you ask it to; the Salesforce tools used are shown under each answer and traced in LangSmith.
+
+It can also be used on its own from any MCP client (for example Claude Desktop): `python salesforce_case_server.py`.
+
+### Voice input
+
+**Spoken replies.** A question asked with the mic gets a short, phone-style answer: in Hindi (Devanagari) when the question is Hindi or Hinglish, otherwise in English. The answer is shown as text in the chat and read aloud live: each sentence is spoken as soon as the model has written it, while the rest is still being generated (Microsoft neural voices through `edge-tts`, no API key; the answer text is sent to Microsoft's speech service). IDs are read letter by letter and digit by digit ("O R D, 1 0 0 0 3"). Every answer also has a **Listen** button. `GET /api/tts/stream?text=...` streams the MP3 for one sentence; `POST /api/tts {text}` returns a whole MP3.
+
+The mic button uses the browser's built-in speech recognition in Chrome and Edge: words appear in the box as you speak, and the question is sent after a 1.5 second pause (click the mic to send right away, Esc to cancel). The arrow next to the mic picks the speech language (Hindi by default, English India, English US). Other browsers record the audio and transcribe it with Groq Whisper instead, with browser noise suppression and a filter that drops low-confidence output from silence or background noise (`STT_MAX_NO_SPEECH`, `STT_MIN_LOGPROB`). Spoken IDs such as "o r d 1 0 0 1 3" or "SKU ELEC 003" are matched to `ORD-10013` / `SKU-ELEC-003`.
 - `GET /health`
 
 ## Files

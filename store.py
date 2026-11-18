@@ -78,7 +78,8 @@ def _thread_out(doc: dict) -> dict:
 # ---------- messages ----------
 
 def add_message(thread_id: str, role: str, content: str, *, sources: list[dict] | None = None,
-                usage: dict | None = None, run_id: str | None = None, duration_ms: int | None = None) -> dict:
+                usage: dict | None = None, run_id: str | None = None, duration_ms: int | None = None,
+                tools: list[str] | None = None) -> dict:
     doc = {
         "_id": str(uuid.uuid4()),
         "thread_id": thread_id,
@@ -88,6 +89,7 @@ def add_message(thread_id: str, role: str, content: str, *, sources: list[dict] 
         "usage": usage or {},
         "run_id": run_id,
         "duration_ms": duration_ms,
+        "tools": tools or [],
         "created_at": _now(),
     }
     messages.insert_one(doc)
@@ -117,6 +119,7 @@ def _message_out(doc: dict) -> dict:
         "usage": doc.get("usage", {}),
         "run_id": doc.get("run_id"),
         "duration_ms": doc.get("duration_ms"),
+        "tools": doc.get("tools", []),
         "created_at": _iso(doc.get("created_at")),
     }
 
