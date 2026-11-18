@@ -71,8 +71,11 @@ def _model(name: str, effort: str | None, retries: int) -> ChatGroq:
     key = (name, effort)
     if key not in _models:
         kwargs = {"reasoning_effort": effort} if effort and name.startswith("openai/gpt-oss") else {}
+        # timeout: a stalled Groq stream fails after this many seconds (then the fallback model
+        # answers) instead of hanging the chat forever.
         _models[key] = ChatGroq(model=name, api_key=config.GROQ_API_KEY, temperature=0.2,
-                                max_tokens=config.MAX_ANSWER_TOKENS, max_retries=retries, **kwargs)
+                                max_tokens=config.MAX_ANSWER_TOKENS, max_retries=retries,
+                                timeout=config.LLM_TIMEOUT_S, **kwargs)
     return _models[key]
 
 
@@ -159,7 +162,7 @@ def generate_title(question: str, answer: str) -> tuple[str | None, dict]:
     global _title_llm
     if _title_llm is None:
         _title_llm = ChatGroq(model=config.TITLE_MODEL, api_key=config.GROQ_API_KEY,
-                              temperature=0.2, max_tokens=300, max_retries=0)
+                              temperature=0.2, max_tokens=300, max_retries=0, timeout=config.LLM_TIMEOUT_S)
     messages = [SystemMessage(TITLE_PROMPT),
                 HumanMessage(f"User: {question[:500]}\n\nAssistant: {answer[:500]}")]
     for llm in (_title_llm, _runnable()):

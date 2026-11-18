@@ -36,6 +36,8 @@ STT_LANGUAGE = os.getenv("STT_LANGUAGE", "").strip()
 # Segments above this no-speech probability, or below this confidence, are treated as noise.
 STT_MAX_NO_SPEECH = float(os.getenv("STT_MAX_NO_SPEECH", "0.6"))
 STT_MIN_LOGPROB = float(os.getenv("STT_MIN_LOGPROB", "-1.0"))
+# Seconds without data from Groq before a request is abandoned (the fallback model then answers).
+LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "45"))
 # Small fast model that writes the chat headings (falls back to GROQ_LLM_MODEL if unavailable).
 TITLE_MODEL = os.getenv("TITLE_MODEL", "openai/gpt-oss-20b")
 
