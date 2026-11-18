@@ -86,7 +86,7 @@ def _file_examples() -> list[dict]:
           "reference": f"Order ORD-10007 is {orders['ORD-10007']['order_status']}, expected "
                        f"{orders['ORD-10007']['expected_delivery']}. (Reply in Hinglish.)"}),
         ("voice", "मेरा ऑर्डर ORD-10003 अभी कहाँ है?", True,
-         {"must_include": [["noida", "नोएडा", "नोयडा", "नॉएडा"]], "script": "devanagari",
+         {"must_include": [["noida", "नोएडा", "नोयडा", "नॉएडा", "नॉयडा", "नोइडा", "नौएडा", "नोएडा"]], "script": "devanagari",
           "reference": "In Hindi: ORD-10003 is in transit at the Noida sorting center."}),
         ("voice", "Rahul Verma ne kya order kiya tha", True,
          {"must_include": [["earbuds", "ईयरबड", "इयरबड", "ईयरबड्स", "10001"]], "script": "devanagari",

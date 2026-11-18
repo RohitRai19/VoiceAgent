@@ -3,7 +3,8 @@
     python -m evals.run_eval              # full run (about 29 questions, ~6 minutes)
     python -m evals.run_eval --limit 5    # quick run on the first 5 examples
     python -m evals.run_eval --no-judge   # skip the LLM judge (fewer tokens)
-    python -m evals.run_eval --refresh    # rebuild the LangSmith dataset from evals/dataset.py
+    python -m evals.run_eval --refresh    # update the LangSmith dataset from evals/dataset.py (keeps experiments)
+    python -m evals.run_eval --match "ORD-10003" --match "Create a case"   # only matching questions
 
 Each example is answered by the real chat pipeline (chat.run_turn: retrieval, Salesforce tools,
 guardrails), then scored by rule checks and an LLM judge. Results appear in LangSmith as an
@@ -143,23 +144,39 @@ def judge(inputs: dict, outputs: dict, reference_outputs: dict) -> dict:
 # ---------- dataset ----------
 
 def ensure_dataset(client: Client, refresh: bool) -> None:
+    """Create the dataset, or with --refresh update it in place from evals/dataset.py.
+    In-place updates keep earlier experiments (deleting a dataset would delete them too)."""
     examples = build_examples()
-    if client.has_dataset(dataset_name=DATASET):
-        if not refresh:
-            return
-        client.delete_dataset(dataset_name=DATASET)
-    ds = client.create_dataset(DATASET, description="VoiceAgent evaluation: file answers, Hindi/voice, general "
-                                                    "knowledge, read-only Salesforce, write confirmation, guardrails.")
-    client.create_examples(dataset_id=ds.id, examples=[{"inputs": e["inputs"], "outputs": e["outputs"]}
-                                                       for e in examples])
-    print(f"created dataset {DATASET!r} with {len(examples)} examples")
+    if not client.has_dataset(dataset_name=DATASET):
+        ds = client.create_dataset(DATASET, description="VoiceAgent evaluation: file answers, Hindi/voice, general "
+                                                        "knowledge, read-only Salesforce, write confirmation, guardrails.")
+        client.create_examples(dataset_id=ds.id, examples=[{"inputs": e["inputs"], "outputs": e["outputs"]}
+                                                           for e in examples])
+        print(f"created dataset {DATASET!r} with {len(examples)} examples")
+        return
+    if not refresh:
+        return
+    ds = client.read_dataset(dataset_name=DATASET)
+    existing = {e.inputs["question"]: e for e in client.list_examples(dataset_id=ds.id)}
+    added = updated = 0
+    for e in examples:
+        old = existing.get(e["inputs"]["question"])
+        if old is None:
+            client.create_examples(dataset_id=ds.id, examples=[{"inputs": e["inputs"], "outputs": e["outputs"]}])
+            added += 1
+        elif (old.outputs or {}) != e["outputs"] or (old.inputs or {}) != e["inputs"]:
+            client.update_example(example_id=old.id, inputs=e["inputs"], outputs=e["outputs"])
+            updated += 1
+    print(f"dataset {DATASET!r}: {updated} updated, {added} added (earlier experiments kept)")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, default=0, help="only the first N examples")
     ap.add_argument("--no-judge", action="store_true", help="skip the LLM judge")
-    ap.add_argument("--refresh", action="store_true", help="rebuild the LangSmith dataset")
+    ap.add_argument("--refresh", action="store_true", help="update the LangSmith dataset in place")
+    ap.add_argument("--match", action="append", default=[],
+                    help="only questions containing this text (can be given several times)")
     args = ap.parse_args()
 
     if not config.TRACING_ENABLED:
@@ -173,6 +190,8 @@ def main() -> int:
 
     data = list(client.list_examples(dataset_name=DATASET))
     data.sort(key=lambda e: e.created_at)
+    if args.match:
+        data = [e for e in data if any(m.lower() in e.inputs["question"].lower() for m in args.match)]
     if args.limit:
         data = data[: args.limit]
     evaluators = [checks, latency] + ([] if args.no_judge else [judge])
