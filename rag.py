@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import re
 import threading
 import uuid
@@ -46,7 +47,9 @@ def _get_embedder() -> TextEmbedding:
     global _embedder
     with _lock:
         if _embedder is None:
-            _embedder = TextEmbedding(model_name=config.EMBED_MODEL)
+            # In Docker the model is baked into FASTEMBED_CACHE_PATH; locally fastembed's default cache is used.
+            cache = os.getenv("FASTEMBED_CACHE_PATH")
+            _embedder = TextEmbedding(model_name=config.EMBED_MODEL, **({"cache_dir": cache} if cache else {}))
         return _embedder
 
 

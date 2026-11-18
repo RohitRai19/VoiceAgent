@@ -22,6 +22,28 @@ uvicorn app:app --reload --port 8000
 Open http://localhost:8000, upload files in the left panel, then ask questions.
 MongoDB must be running (`MONGODB_URI`). The first upload downloads the embedding model once.
 
+### Docker
+
+The image contains the app and the embedding model; keys are never baked in, they come from `.env` at runtime. `docker-compose.yml` runs the app together with its own MongoDB.
+
+```powershell
+docker compose up -d --build        # build and start app + MongoDB -> http://localhost:8080
+docker compose logs -f app          # watch it start
+docker compose down                 # stop (data is kept in the app-data / mongo-data volumes)
+```
+
+To use your existing local MongoDB instead of the bundled one, set `MONGODB_URI=mongodb://host.docker.internal:27017` in the `app` service.
+
+Publish to Docker Hub:
+
+```powershell
+docker login
+docker tag voiceagent:latest <dockerhub-username>/voiceagent:latest
+docker push <dockerhub-username>/voiceagent:latest
+```
+
+Run the published image anywhere with `IMAGE=<dockerhub-username>/voiceagent:latest docker compose up -d` (a `.env` file with your keys must be next to `docker-compose.yml`).
+
 ### Environment variables
 
 | Variable | Default | Purpose |

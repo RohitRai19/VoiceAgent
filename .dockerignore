@@ -1,0 +1,24 @@
+# Secrets: passed at runtime (env_file / -e), never baked into the image
+.env
+.env.*
+!.env.example
+
+# Local environment, caches, data
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+*.mp3
+*.webm
+
+# Not needed in the image
+.git/
+.gitignore
+.vscode/
+.claude/
+legacy_voice_db/
+Dockerfile
+docker-compose*.yml
+*.md

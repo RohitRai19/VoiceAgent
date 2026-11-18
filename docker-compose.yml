@@ -1,0 +1,33 @@
+# Runs the app with its own MongoDB. Keys come from .env at runtime (never baked into the image).
+#   docker compose up -d        -> http://localhost:8080
+services:
+  app:
+    image: ${IMAGE:-voiceagent:latest}
+    build: .
+    env_file: .env
+    environment:
+      # Inside Docker "localhost" is the container itself, so point at the mongo service.
+      MONGODB_URI: mongodb://mongo:27017
+    ports:
+      - "${APP_PORT:-8080}:8000"
+    volumes:
+      - app-data:/app/data
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  mongo-data:
