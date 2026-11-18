@@ -44,6 +44,22 @@ docker push <dockerhub-username>/voiceagent:latest
 
 Run the published image anywhere with `IMAGE=<dockerhub-username>/voiceagent:latest docker compose up -d` (a `.env` file with your keys must be next to `docker-compose.yml`).
 
+### Deploy on a server (e.g. AWS EC2)
+
+`docker-compose.prod.yml` runs **Caddy** (automatic HTTPS + a password), the app and MongoDB. Only Caddy is reachable from the internet. HTTPS is required for the microphone to work in browsers.
+
+1. Server: Ubuntu 24.04, x86_64, at least 2 GB RAM (e.g. EC2 `t3.small`), ports 22 (your IP), 80 and 443 open.
+2. `git clone` this repo on the server and create `.env` there (same keys as locally) plus:
+   ```
+   DOMAIN=<your domain, or <ip-with-dashes>.sslip.io>
+   BASIC_AUTH_USER=admin
+   BASIC_AUTH_HASH='<output of: docker run --rm caddy:2 caddy hash-password --plaintext "your-password">'
+   ```
+   Keep the single quotes around the hash.
+3. `docker compose -f docker-compose.prod.yml up -d`, then open `https://<DOMAIN>`.
+
+Update later: `docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d`.
+
 ### Environment variables
 
 | Variable | Default | Purpose |
