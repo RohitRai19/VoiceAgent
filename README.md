@@ -16,7 +16,7 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env      # then fill in GROQ_API_KEY and LANGSMITH_API_KEY
-uvicorn app:app --reload --port 8000     # or double-click run.bat
+uvicorn app:app --reload --port 8000
 ```
 
 Open http://localhost:8000, upload files in the left panel, then ask questions.
