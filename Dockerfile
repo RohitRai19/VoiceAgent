@@ -15,7 +15,7 @@ RUN pip install -r requirements.txt
 ARG EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='${EMBED_MODEL}', cache_dir='/app/models')"
 
-COPY app.py chat.py config.py rag.py store.py tts.py mcp_client.py salesforce_case_server.py ./
+COPY app.py chat.py config.py guardrails.py rag.py store.py tts.py mcp_client.py salesforce_case_server.py ./
 COPY static ./static
 COPY knowledge ./knowledge
 
