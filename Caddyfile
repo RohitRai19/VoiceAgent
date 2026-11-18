@@ -1,9 +1,7 @@
-# Public entry point on the server: automatic HTTPS (Let's Encrypt) + a password in front of the app.
-# DOMAIN, BASIC_AUTH_USER and BASIC_AUTH_HASH come from .env (see docker-compose.prod.yml).
+# Public entry point on the server: automatic HTTPS (Let's Encrypt) in front of the app.
+# HTTPS is needed because browsers only allow the microphone on https:// pages.
+# DOMAIN comes from .env (see docker-compose.prod.yml).
 {$DOMAIN} {
-	basic_auth {
-		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
-	}
 	reverse_proxy app:8000 {
 		# Send streamed answers and spoken audio to the browser immediately.
 		flush_interval -1

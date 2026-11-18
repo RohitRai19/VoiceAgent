@@ -1,7 +1,7 @@
-# Production on one server (e.g. AWS EC2): Caddy (HTTPS + password) -> app -> MongoDB.
+# Production on one server (e.g. AWS EC2): Caddy (HTTPS) -> app -> MongoDB.
 # Only Caddy is reachable from the internet (ports 80/443); the app and MongoDB are internal.
 #   docker compose -f docker-compose.prod.yml up -d
-# Needs a .env next to this file with the app keys plus DOMAIN, BASIC_AUTH_USER, BASIC_AUTH_HASH.
+# Needs a .env next to this file with the app keys plus DOMAIN.
 services:
   caddy:
     image: caddy:2
@@ -10,8 +10,6 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-      BASIC_AUTH_USER: ${BASIC_AUTH_USER:-admin}
-      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH:?set BASIC_AUTH_HASH in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
