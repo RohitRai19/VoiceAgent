@@ -67,7 +67,7 @@ _RULES: list[tuple[str, re.Pattern]] = [
         r"(निर्देश|इंस्ट्रक्शन|नियम).{0,30}(भूल|अनदेखा|इग्नोर|नज़रअंदाज़|नजरअंदाज)"
         r"|सिस्टम\s*प्रॉम्प्ट|(प्रॉम्प्ट|निर्देश).{0,15}(दिखाओ|दिखा दो|बताओ|बता दो)", re.S)),
     ("secrets", re.compile(
-        r"\b(your|the app'?s|this app'?s|groq|langsmith|salesforce|server'?s?)\b.{0,40}"
+        r"\b(your|the app'?s|this app'?s|groq|langsmith|salesforce|tavily|server'?s?)\b.{0,40}"
         r"\b(api[\s_-]?keys?|secret|client[\s_-]?secret|access[\s_-]?token|password|credentials)\b", re.I | re.S)),
     ("secrets", re.compile(
         r"\b(show|print|display|cat|read|open|give|share|send|dikhao|batao)\b.{0,30}"
@@ -218,6 +218,7 @@ limiter = RateLimiter()
 _SECRET_PATTERNS = [
     re.compile(r"gsk_[A-Za-z0-9]{20,}"),                  # Groq
     re.compile(r"lsv2_[a-z]{2}_[0-9a-f]{20,}"),           # LangSmith
+    re.compile(r"tvly-[A-Za-z0-9-]{20,}"),                # Tavily
     re.compile(r"3MVG[A-Za-z0-9._]{30,}"),                # Salesforce consumer key
     re.compile(r"00D[A-Za-z0-9]{12,15}![A-Za-z0-9._]{20,}"),  # Salesforce session token
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
@@ -232,7 +233,8 @@ _PROMPT_MARKERS = [
 
 
 def _secret_values() -> list[str]:
-    vals = [config.GROQ_API_KEY, config.LANGSMITH_API_KEY, config.SF_CLIENT_ID, config.SF_CLIENT_SECRET]
+    vals = [config.GROQ_API_KEY, config.LANGSMITH_API_KEY, config.SF_CLIENT_ID, config.SF_CLIENT_SECRET,
+            config.TAVILY_API_KEY]
     return [v for v in vals if v and len(v) >= 12]
 
 

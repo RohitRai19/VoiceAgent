@@ -18,6 +18,9 @@ python-docx
 groq>=0.11
 edge-tts>=6.1
 
+# Live data tools (live_tools.py): share prices from Yahoo Finance
+yfinance>=0.2.50
+
 # Salesforce MCP server + client (salesforce_case_server.py, mcp_client.py)
 mcp>=2.0
 requests>=2.31

@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 import chat
 import guardrails
+import live_tools
 import mcp_client
 import rag
 import store
@@ -83,8 +84,12 @@ async def lifespan(_: FastAPI):
     # Load the embedding model now, so the first question does not pay for it.
     await asyncio.to_thread(rag.embed, ["warm up"])
     # Start the Salesforce MCP server (if configured) and hand its tools to the chat.
-    chat.TOOLS = await asyncio.to_thread(mcp_client.load_mcp_tools)
-    log.info("salesforce tools: %s", ", ".join(t.name for t in chat.TOOLS) or "none (not configured or failed)")
+    sf_tools = await asyncio.to_thread(mcp_client.load_mcp_tools)
+    log.info("salesforce tools: %s", ", ".join(t.name for t in sf_tools) or "none (not configured or failed)")
+    # Live data tools: weather, share prices, web search.
+    extra = live_tools.load_live_tools()
+    log.info("live data tools: %s", ", ".join(t.name for t in extra) or "none")
+    chat.TOOLS = sf_tools + extra
     yield
 
 
@@ -150,11 +155,12 @@ async def health():
             "output_filter": config.GUARDRAILS_ENABLED and config.GUARDRAILS_OUTPUT_FILTER,
             "messages_per_minute": config.GUARDRAILS_MSGS_PER_MINUTE,
         },
+        "live_tools": [t.name for t in chat.TOOLS if not t.name.startswith("sf_")],
         "salesforce": {
-            "connected": bool(chat.TOOLS),
+            "connected": any(t.name.startswith("sf_") for t in chat.TOOLS),
             "auth": "connected app" if mcp_client.connected_app_configured()
                     else (f"cli alias {config.SF_ORG_ALIAS}" if config.SF_ORG_ALIAS else "not configured"),
-            "tools": [t.name for t in chat.TOOLS],
+            "tools": [t.name for t in chat.TOOLS if t.name.startswith("sf_")],
         },
     }
 
@@ -221,6 +227,23 @@ def _field(obj, name, default=None):
     return obj.get(name, default) if isinstance(obj, dict) else getattr(obj, name, default)
 
 
+def _is_hallucination(text: str) -> bool:
+    return text.lower().strip(" .!?,।") in _HALLUCINATIONS
+
+
+def _confident_text(resp) -> str:
+    """Only the segments Whisper is confident contain real speech (drops silence and noise)."""
+    segments = _field(resp, "segments") or []
+    if not segments:
+        return (_field(resp, "text", "") or "").strip()
+    kept = [
+        _field(s, "text", "") for s in segments
+        if (_field(s, "no_speech_prob", 0) or 0) < config.STT_MAX_NO_SPEECH
+        and (_field(s, "avg_logprob", 0) or 0) > config.STT_MIN_LOGPROB
+    ]
+    return " ".join(t.strip() for t in kept if t and t.strip())
+
+
 def _transcribe(filename: str, data: bytes) -> str:
     global _stt_client
     if _stt_client is None:
@@ -232,22 +255,23 @@ def _transcribe(filename: str, data: bytes) -> str:
     if config.STT_LANGUAGE:
         kwargs["language"] = config.STT_LANGUAGE
     resp = _stt_client.audio.transcriptions.create(**kwargs)
-
-    segments = _field(resp, "segments") or []
-    if segments:
-        # Keep only segments Whisper is confident contain real speech.
-        kept = [
-            _field(s, "text", "") for s in segments
-            if (_field(s, "no_speech_prob", 0) or 0) < config.STT_MAX_NO_SPEECH
-            and (_field(s, "avg_logprob", 0) or 0) > config.STT_MIN_LOGPROB
-        ]
-        text = " ".join(t.strip() for t in kept if t and t.strip())
-    else:
-        text = (_field(resp, "text", "") or "").strip()
+    text = _confident_text(resp)
+    # Auto-detect is for Hindi + English. Whisper often labels Hindi speech as Urdu (and writes it
+    # in Urdu script); real speech in any other language is transcribed again as Hindi.
+    # Only when the first pass found confident speech: forcing Hindi on noise invents words.
+    detected = (_field(resp, "language", "") or "").lower()
+    if text and not config.STT_LANGUAGE and detected and detected not in {"english", "en", "hindi", "hi"}:
+        # Noise often comes back as a hallucination ("Thank you for watching.") in a random language;
+        # that is not speech, so do not force it into Hindi (which invents a Hindi word).
+        no_speech = max((_field(s, "no_speech_prob", 0) or 0) for s in (_field(resp, "segments") or [{}]))
+        if _is_hallucination(text) or no_speech >= 0.3:
+            return ""
+        log.info("whisper detected %r; transcribing again as Hindi", detected)
+        text = _confident_text(_stt_client.audio.transcriptions.create(**{**kwargs, "language": "hi"}))
     text = _strip_sound_tags(text)
 
-    normalized =text.lower().strip(" .!?,।")
-    if not normalized or normalized in _HALLUCINATIONS:
+    normalized = text.lower().strip(" .!?,।")
+    if not normalized or _is_hallucination(text):
         return ""
     if config.STT_PROMPT:
         # Whisper sometimes "hears" the vocabulary hint in noise. Drop output made mostly of hint words.

@@ -38,6 +38,18 @@ STT_LANGUAGE = os.getenv("STT_LANGUAGE", "").strip()
 # Segments above this no-speech probability, or below this confidence, are treated as noise.
 STT_MAX_NO_SPEECH = float(os.getenv("STT_MAX_NO_SPEECH", "0.6"))
 STT_MIN_LOGPROB = float(os.getenv("STT_MIN_LOGPROB", "-1.0"))
+# --- Live data tools (live_tools.py) ---
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
+
+
+def _on(name: str) -> bool:
+    return os.getenv(name, "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+WEATHER_TOOL_ENABLED = _on("WEATHER_TOOL_ENABLED")      # Open-Meteo, no key
+STOCK_TOOL_ENABLED = _on("STOCK_TOOL_ENABLED")          # Yahoo Finance via yfinance, no key
+WEB_SEARCH_ENABLED = _on("WEB_SEARCH_ENABLED")          # Tavily, needs TAVILY_API_KEY
+
 # --- Guardrails (guardrails.py) ---
 def _flag(name: str, default: str = "true") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}

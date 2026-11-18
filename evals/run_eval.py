@@ -27,6 +27,7 @@ from langchain_groq import ChatGroq
 from langsmith import Client, evaluate
 
 import chat
+import live_tools
 import mcp_client
 import store
 from evals.dataset import build_examples
@@ -184,8 +185,8 @@ def main() -> int:
         return 2
     client = Client()
     ensure_dataset(client, args.refresh)
-    chat.TOOLS = mcp_client.load_mcp_tools()
-    print(f"Salesforce tools: {len(chat.TOOLS)} | guardrails: {config.GUARDRAILS_ENABLED} "
+    chat.TOOLS = mcp_client.load_mcp_tools() + live_tools.load_live_tools()
+    print(f"tools: {[t.name for t in chat.TOOLS]} | guardrails: {config.GUARDRAILS_ENABLED} "
           f"(LLM check {config.GUARDRAILS_LLM_CHECK})")
 
     data = list(client.list_examples(dataset_name=DATASET))

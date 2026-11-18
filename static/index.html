@@ -463,10 +463,11 @@ function finishAssistant(msgEl, m) {
     meta.append(g);
   }
   if (m.tools && m.tools.length) {
-    const names = [...new Set(m.tools.map((t) => t.replace(/^sf_/, "").replace(/_/g, " ")))];
-    const t = el("span", null, "Salesforce: " + names.join(", "));
-    t.title = "Salesforce tools used for this answer";
-    meta.append(t);
+    const sf = [...new Set(m.tools.filter((t) => t.startsWith("sf_")).map((t) => t.replace(/^sf_/, "").replace(/_/g, " ")))];
+    const LIVE = { get_weather: "weather", get_stock_price: "share price (Yahoo Finance)", web_search: "web search (Tavily)" };
+    const live = [...new Set(m.tools.filter((t) => !t.startsWith("sf_")).map((t) => LIVE[t] || t.replace(/_/g, " ")))];
+    if (sf.length) { const t = el("span", null, "Salesforce: " + sf.join(", ")); t.title = "Salesforce tools used for this answer"; meta.append(t); }
+    if (live.length) { const t = el("span", null, "Live: " + live.join(", ")); t.title = "Live data tools used for this answer"; meta.append(t); }
   }
   if (m.duration_ms != null) { const d = el("span", null, "answered in " + fmtTime(m.duration_ms)); d.title = "Processing time for this answer"; meta.append(d); }
   if (u.total_tokens) meta.append(el("span", null, `${u.total_tokens.toLocaleString()} tokens (${u.input_tokens.toLocaleString()} in · ${u.output_tokens.toLocaleString()} out)`));
@@ -639,7 +640,7 @@ async function send(text, opts = {}) {
           answer = data.text; bubble.innerHTML = md(answer);
           if (speech) { stopSpeaking(); speech = startSpeech(); feedSpeech(speech, answer, true); }
         } else if (ev === "tool") {
-          step.textContent = "· Salesforce: " + data.label + "…";
+          step.textContent = "· " + (data.name.startsWith("sf_") ? "Salesforce: " : "") + data.label + "…";
         } else if (ev === "sources") {
           renderSources(msg, data.sources);
         } else if (ev === "token") {
@@ -751,14 +752,17 @@ let recorder = null;
 function notice(title, text) { return confirmDialog({ title, text, confirmLabel: "OK", cancelLabel: null, danger: false }); }
 
 // Speech language for the browser's recognizer (Chrome/Edge). Saved per browser.
+// "auto": record, then Whisper detects Hindi or English and writes each in its own script.
+// The others use the browser's live recognition in one fixed language (text appears while speaking).
 const SPEECH_LANGS = [
-  { code: "hi-IN", label: "Hindi" },
-  { code: "en-IN", label: "English (India)" },
-  { code: "en-US", label: "English (US)" },
+  { code: "auto", label: "Auto-detect (Hindi + English)" },
+  { code: "hi-IN", label: "Hindi (live text)" },
+  { code: "en-IN", label: "English India (live text)" },
+  { code: "en-US", label: "English US (live text)" },
 ];
 function speechLang() {
   let v = ""; try { v = localStorage.getItem("speechLang") || ""; } catch {}
-  return SPEECH_LANGS.some((l) => l.code === v) ? v : "hi-IN";
+  return SPEECH_LANGS.some((l) => l.code === v) ? v : "auto";
 }
 $("mic-device").title = "Speech language";
 $("mic-device").setAttribute("aria-label", "Speech language");
@@ -938,7 +942,7 @@ async function startRecording() {
 }
 mic.onclick = () => {
   stopSpeaking();  // don't record the assistant's own voice
-  if (SpeechRec) {
+  if (SpeechRec && speechLang() !== "auto") {
     if (dictation) dictation.stop(); else startDictation();  // click again to stop and send now
   } else if (recorder) {
     if (recorder.state !== "inactive") recorder.stopByUser();
@@ -955,6 +959,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 // The language menu only applies to the browser recognizer.
+// Without browser recognition only auto-detect (Whisper) is possible, so the menu is not needed.
 if (!SpeechRec) $("mic-device").hidden = true;
 
 (async function init() {
