@@ -77,17 +77,35 @@ def get_weather(location: str, days: int = 1) -> str:
 
 _TICKER_RE = re.compile(r"^\^?[A-Z0-9.\-=&]{1,15}$")
 
+# Index names map to the index itself. A plain search prefers NSE listings, so "Nifty 50" would
+# otherwise land on an ETF such as NIFTYBEES.NS (about 290 INR) instead of the index (about 25,000).
+_INDEX_ALIASES = {
+    "nifty": "^NSEI", "nifty 50": "^NSEI", "nifty50": "^NSEI", "निफ्टी": "^NSEI",
+    "sensex": "^BSESN", "bse sensex": "^BSESN", "सेंसेक्स": "^BSESN",
+    "bank nifty": "^NSEBANK", "nifty bank": "^NSEBANK", "banknifty": "^NSEBANK",
+    "nifty it": "^CNXIT", "nifty next 50": "^NSMIDCP", "india vix": "^INDIAVIX",
+    "dow": "^DJI", "dow jones": "^DJI", "s&p 500": "^GSPC", "sp500": "^GSPC", "nasdaq": "^IXIC",
+}
+
 
 def _find_symbol(query: str) -> str | None:
-    """Ticker for a company name, preferring Indian listings (NSE, then BSE) when there are several."""
+    """Ticker for a company or index name. Index names go to the index; companies prefer Indian
+    listings (NSE, then BSE) when there are several."""
     import yfinance as yf
 
     q = query.strip()
+    alias = _INDEX_ALIASES.get(re.sub(r"\s+(index|indices)$", "", q.lower()).strip())
+    if alias:
+        return alias
     if _TICKER_RE.match(q) and (any(ch in q for ch in ".^=") or q.isupper()):
         return q
     quotes = [x for x in (yf.Search(q, max_results=8).quotes or []) if x.get("symbol")]
     if not quotes:
         return None
+    if "index" in q.lower():
+        for x in quotes:
+            if x.get("quoteType") == "INDEX":
+                return x["symbol"]
     for suffix in (".NS", ".BO"):
         for x in quotes:
             if x["symbol"].endswith(suffix) and x.get("quoteType") in ("EQUITY", "ETF", "INDEX", None):
