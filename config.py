@@ -21,6 +21,8 @@ GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
 GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b").strip()
 # Salesforce (read by salesforce_case_server.py / mcp_client.py from the environment).
 SF_ORG_ALIAS = os.getenv("SF_ORG_ALIAS", "").strip()
+SF_CLIENT_ID = os.getenv("SF_CLIENT_ID", "").strip()          # only used to detect leaks (guardrails)
+SF_CLIENT_SECRET = os.getenv("SF_CLIENT_SECRET", "").strip()
 # Spoken replies (edge-tts). Hindi voice for Devanagari answers, Indian-English otherwise.
 TTS_VOICE_HI = os.getenv("TTS_VOICE_HI", "hi-IN-SwaraNeural")
 TTS_VOICE_EN = os.getenv("TTS_VOICE_EN", "en-IN-NeerjaNeural")
@@ -36,6 +38,25 @@ STT_LANGUAGE = os.getenv("STT_LANGUAGE", "").strip()
 # Segments above this no-speech probability, or below this confidence, are treated as noise.
 STT_MAX_NO_SPEECH = float(os.getenv("STT_MAX_NO_SPEECH", "0.6"))
 STT_MIN_LOGPROB = float(os.getenv("STT_MIN_LOGPROB", "-1.0"))
+# --- Guardrails (guardrails.py) ---
+def _flag(name: str, default: str = "true") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+GUARDRAILS_ENABLED = _flag("GUARDRAILS_ENABLED")              # master switch
+GUARDRAILS_LLM_CHECK = _flag("GUARDRAILS_LLM_CHECK")          # small-model safety check per message
+GUARDRAILS_LLM_MODEL = os.getenv("GUARDRAILS_LLM_MODEL", "openai/gpt-oss-20b")
+GUARDRAILS_LLM_TIMEOUT_S = float(os.getenv("GUARDRAILS_LLM_TIMEOUT_S", "6"))
+GUARDRAILS_CONFIRM_WRITES = _flag("GUARDRAILS_CONFIRM_WRITES")  # Salesforce changes need a "yes"
+GUARDRAILS_OUTPUT_FILTER = _flag("GUARDRAILS_OUTPUT_FILTER")  # stop keys / system prompt leaking
+GUARDRAILS_MAX_INPUT_CHARS = int(os.getenv("GUARDRAILS_MAX_INPUT_CHARS", "4000"))
+GUARDRAILS_MSGS_PER_MINUTE = int(os.getenv("GUARDRAILS_MSGS_PER_MINUTE", "20"))
+GUARDRAILS_WRITES_PER_MINUTE = int(os.getenv("GUARDRAILS_WRITES_PER_MINUTE", "5"))
+GUARDRAILS_UPLOADS_PER_MINUTE = int(os.getenv("GUARDRAILS_UPLOADS_PER_MINUTE", "5"))
+GUARDRAILS_VOICE_PER_MINUTE = int(os.getenv("GUARDRAILS_VOICE_PER_MINUTE", "20"))   # speech-to-text
+GUARDRAILS_TTS_PER_MINUTE = int(os.getenv("GUARDRAILS_TTS_PER_MINUTE", "240"))      # spoken sentences
+PENDING_ACTION_TTL_S = int(os.getenv("PENDING_ACTION_TTL_S", "600"))  # how long a confirmation stays valid
+
 # Seconds without data from Groq before a request is abandoned (the fallback model then answers).
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "45"))
 # Small fast model that writes the chat headings (falls back to GROQ_LLM_MODEL if unavailable).

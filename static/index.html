@@ -81,6 +81,15 @@
   .dialog button:hover { border-color: var(--muted); }
   .dialog button.danger-btn { background: #ef5350; border-color: #ef5350; color: #fff; }
   .dialog button.danger-btn:hover { filter: brightness(1.08); }
+  .confirm-box { margin-top: 10px; border: 1px solid var(--accent); border-radius: 12px; padding: 12px 14px; background: var(--panel); }
+  .confirm-box.done { opacity: .6; }
+  .confirm-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
+  .confirm-summary { overflow-wrap: anywhere; }
+  .confirm-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .confirm-actions button { border-radius: 8px; padding: 6px 16px; font-weight: 600; border: 1px solid var(--border); background: var(--hover); }
+  .confirm-actions .confirm-yes { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .confirm-actions button:disabled { opacity: .5; cursor: default; }
+  .guard-note { color: var(--danger); }
   .file-row { cursor: default; }
   .empty { color: var(--muted); font-size: 13px; padding: 6px 8px; }
   #drop { margin: 0 14px 14px; border: 1.5px dashed var(--border); border-radius: 10px; padding: 12px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
@@ -448,6 +457,11 @@ function finishAssistant(msgEl, m) {
   msgEl.listenButton = listen;
   const meta = el("div", "meta");
   const u = m.usage || {};
+  if (m.guardrail && m.guardrail.blocked) {
+    const g = el("span", "guard-note", "blocked by guardrails" + (m.guardrail.category ? " (" + m.guardrail.category.replace(/_/g, " ") + ")" : ""));
+    g.title = "This message was stopped by a safety check";
+    meta.append(g);
+  }
   if (m.tools && m.tools.length) {
     const names = [...new Set(m.tools.map((t) => t.replace(/^sf_/, "").replace(/_/g, " ")))];
     const t = el("span", null, "Salesforce: " + names.join(", "));
@@ -555,6 +569,28 @@ function speak(text, button) {
   feedSpeech(s, text, true);
 }
 
+// A Salesforce change waiting for the user's decision: show it with Confirm / Cancel buttons.
+function renderConfirm(msgEl, action) {
+  const body = msgEl.querySelector(".body") || msgEl;
+  const box = el("div", "confirm-box");
+  box.append(el("div", "confirm-title", "Salesforce change waiting for your confirmation"),
+             el("div", "confirm-summary", action.summary));
+  const row = el("div", "confirm-actions");
+  const yes = el("button", "confirm-yes", "Confirm"); yes.type = "button";
+  const no = el("button", "confirm-no", "Cancel"); no.type = "button";
+  const decide = (text) => {
+    if (state.busy) return;
+    yes.disabled = no.disabled = true;
+    box.classList.add("done");
+    send(text);
+  };
+  yes.onclick = () => decide("Yes, confirm");
+  no.onclick = () => decide("No, cancel");
+  row.append(yes, no);
+  box.append(row);
+  body.insertBefore(box, body.querySelector(".actions"));
+}
+
 async function send(text, opts = {}) {
   stopSpeaking();
   state.busy = true; $("send").disabled = true; setStatus("busy");
@@ -572,9 +608,9 @@ async function send(text, opts = {}) {
   const startedAt = performance.now();
   const timer = setInterval(() => (elapsed.textContent = fmtTime(performance.now() - startedAt)), 100);
   scrollDown();
-  let answer = "", finished = false;
+  let answer = "", finished = false, pendingAction = null;
   // Voice question: start speaking the answer while it is still being written.
-  const speech = opts.voice ? startSpeech() : null;
+  let speech = opts.voice ? startSpeech() : null;
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -596,6 +632,12 @@ async function send(text, opts = {}) {
           state.threadId = data.thread_id;
           history.replaceState(null, "", "#" + data.thread_id);
           setHeader({ thread_id: data.thread_id, title: data.title, total_tokens: 0 });
+        } else if (ev === "confirm") {
+          pendingAction = data;
+        } else if (ev === "redact") {
+          // The output guardrail replaced the answer (it would have leaked a key or internal settings).
+          answer = data.text; bubble.innerHTML = md(answer);
+          if (speech) { stopSpeaking(); speech = startSpeech(); feedSpeech(speech, answer, true); }
         } else if (ev === "tool") {
           step.textContent = "· Salesforce: " + data.label + "…";
         } else if (ev === "sources") {
@@ -610,6 +652,7 @@ async function send(text, opts = {}) {
           finished = true;
           bubble.innerHTML = md(data.message.content);
           finishAssistant(msg, data.message);
+          if (pendingAction) renderConfirm(msg, pendingAction);
           setHeader(data.thread);
           if (speech) {
             // Speak anything the server added at the end (e.g. a note) and finish the queue.

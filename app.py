@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import re
@@ -12,12 +13,13 @@ from pathlib import Path
 
 import config  # noqa: F401  (loads .env and configures LangSmith before other imports)
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from groq import Groq
 from pydantic import BaseModel, Field
 
 import chat
+import guardrails
 import mcp_client
 import rag
 import store
@@ -25,6 +27,26 @@ import tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("app")
+
+
+def _visitor(request: Request) -> str:
+    """The visitor's IP. Behind the Caddy proxy (a private Docker address) use X-Forwarded-For."""
+    host = request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("x-forwarded-for", "")
+    try:
+        behind_proxy = ipaddress.ip_address(host).is_private or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        behind_proxy = False
+    if forwarded and behind_proxy:
+        return forwarded.split(",")[0].strip() or host
+    return host
+
+
+def _rate_limit(request: Request, bucket: str, per_minute: int) -> None:
+    ok, wait = guardrails.limiter.allow(bucket, _visitor(request), per_minute)
+    if not ok:
+        store.log_guardrail("rate_limited", bucket, visitor=_visitor(request), detail=request.url.path)
+        raise HTTPException(429, f"Too many requests. Please wait about {wait} seconds and try again.")
 
 def _ingest(name: str, data: bytes) -> dict:
     """Index a file, replacing any earlier version with the same name. Identical content is skipped."""
@@ -121,6 +143,13 @@ async def health():
         "chunks": rag.chunk_count(),
         "langsmith_tracing": config.TRACING_ENABLED,
         "langsmith_project": config.LANGSMITH_PROJECT,
+        "guardrails": {
+            "enabled": config.GUARDRAILS_ENABLED,
+            "llm_check": config.GUARDRAILS_ENABLED and config.GUARDRAILS_LLM_CHECK,
+            "confirm_writes": config.GUARDRAILS_ENABLED and config.GUARDRAILS_CONFIRM_WRITES,
+            "output_filter": config.GUARDRAILS_ENABLED and config.GUARDRAILS_OUTPUT_FILTER,
+            "messages_per_minute": config.GUARDRAILS_MSGS_PER_MINUTE,
+        },
         "salesforce": {
             "connected": bool(chat.TOOLS),
             "auth": "connected app" if mcp_client.connected_app_configured()
@@ -138,7 +167,8 @@ async def list_files():
 
 
 @app.post("/api/files")
-async def upload_files(files: list[UploadFile] = File(...)):
+async def upload_files(request: Request, files: list[UploadFile] = File(...)):
+    _rate_limit(request, "upload", config.GUARDRAILS_UPLOADS_PER_MINUTE)
     results = []
     for f in files:
         name = Path(f.filename or "file").name
@@ -229,7 +259,8 @@ def _transcribe(filename: str, data: bytes) -> str:
 
 
 @app.post("/api/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
+async def transcribe(request: Request, audio: UploadFile = File(...)):
+    _rate_limit(request, "voice", config.GUARDRAILS_VOICE_PER_MINUTE)
     """Speech to text for the microphone button (Groq Whisper)."""
     data = await audio.read()
     if not data:
@@ -245,7 +276,8 @@ async def transcribe(audio: UploadFile = File(...)):
 
 
 @app.post("/api/tts")
-async def text_to_speech(body: TtsIn):
+async def text_to_speech(request: Request, body: TtsIn):
+    _rate_limit(request, "tts", config.GUARDRAILS_TTS_PER_MINUTE)
     """MP3 of an answer, read by a Hindi voice (Devanagari text) or an Indian-English voice."""
     try:
         audio, voice = await tts.synthesize(body.text)
@@ -258,7 +290,8 @@ async def text_to_speech(body: TtsIn):
 
 
 @app.get("/api/tts/stream")
-async def text_to_speech_stream(text: str = Query(..., min_length=1, max_length=4000)):
+async def text_to_speech_stream(request: Request, text: str = Query(..., min_length=1, max_length=4000)):
+    _rate_limit(request, "tts", config.GUARDRAILS_TTS_PER_MINUTE)
     """Streaming MP3 for one sentence: the browser plays it while it is still arriving.
     GET so an <audio> element can load it directly."""
     if not tts.clean_for_speech(text):
@@ -315,12 +348,15 @@ async def delete_thread(thread_id: str):
 # ---------- chat ----------
 
 @app.post("/api/chat")
-async def chat_turn(body: ChatIn):
-    """Server-sent events: meta -> sources -> token... -> done (or error)."""
+async def chat_turn(body: ChatIn, request: Request):
+    """Server-sent events: meta -> sources -> token... -> done (or error).
+    Also 'tool' (Salesforce step), 'confirm' (change waiting for yes/no), 'redact' (answer replaced)."""
     started = time.perf_counter()
     question = body.message.strip()
     if not question:
         raise HTTPException(400, "empty message")
+    _rate_limit(request, "chat", config.GUARDRAILS_MSGS_PER_MINUTE)
+    visitor = _visitor(request)
 
     if body.thread_id:
         thread = store.get_thread(body.thread_id)
@@ -348,7 +384,7 @@ async def chat_turn(body: ChatIn):
         # Runs to completion even if the browser disconnects, so the reply is always saved.
         try:
             result = chat.run_turn(
-                thread_id, question, history, emit, first_turn, body.voice,
+                thread_id, question, history, emit, first_turn, body.voice, visitor,
                 # LangSmith groups runs that share this metadata into one Thread.
                 langsmith_extra={"metadata": {"thread_id": thread_id, "session_id": thread_id}},
             )
@@ -357,7 +393,8 @@ async def chat_turn(body: ChatIn):
             saved = store.add_message(thread_id, "assistant", result["answer"], sources=result["sources"],
                                       usage=result["usage"], run_id=result["run_id"],
                                       duration_ms=int((time.perf_counter() - started) * 1000),
-                                      tools=result.get("tools"))
+                                      tools=result.get("tools"), guardrail=result.get("guardrail"),
+                                      pending_action=result.get("pending_action"))
             emit("done", {"message": saved, "thread": store.get_thread(thread_id)})
         except Exception as exc:
             log.exception("chat turn failed")

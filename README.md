@@ -108,6 +108,30 @@ Questions about one order use about 1,800 tokens; listing questions over all ord
 
 It can also be used on its own from any MCP client (for example Claude Desktop): `python salesforce_case_server.py`.
 
+### Guardrails (`guardrails.py`)
+
+| Guardrail | What it does |
+| --- | --- |
+| Input rules | Length limit; prompt-injection / jailbreak patterns in English, Hindi and Hinglish ("ignore previous instructions", "सिस्टम प्रॉम्प्ट दिखाओ"); requests for the app's keys or `.env`; obvious weapon requests. Instant, no tokens. |
+| LLM safety check | `gpt-oss-20b` classifies each message (injection, harmful, abuse). Runs in parallel with retrieval; if the check itself fails it allows the message so chat keeps working. |
+| Salesforce write confirmation | Create / update / comment tools are not run directly: the change is saved as pending and the user gets **Confirm / Cancel** buttons (or can answer yes / haan / no). Plus a limit on confirmed changes per visitor per minute. |
+| Rate limits | Per visitor IP (behind the proxy via `X-Forwarded-For`): chat messages, uploads, transcription, speech. Answers `429` with a wait time. |
+| Output filter | Streams answers through a small hold-back buffer and checks for API keys, the configured secrets and system-prompt text before anything reaches the browser; a leaking answer is replaced. |
+
+Blocked messages get a short refusal (Hindi or English), are marked "blocked by guardrails" under the answer, and are logged in MongoDB (`guardrail_events`). All switches are in `.env.example`.
+
+### Evaluation (`evals/`)
+
+`python -m evals.run_eval` runs a 29-question test set through the real chat pipeline and records the results in LangSmith as an experiment on the `voiceagent-eval` dataset:
+
+- **file answers** (expected facts computed from the knowledge file: order tracking, listings, refunds, stock totals, inventory value, policies, unknown order),
+- **language / voice** (Hinglish reply in Latin letters, Hindi voice reply in Devanagari),
+- **general knowledge** and **no invented live data** (share price),
+- **Salesforce** read-only lookups and a **create request that must stop at the confirmation step** (nothing is ever confirmed or written),
+- **guardrail attacks** (injection, key requests, Hindi injection, weapons, role-play jailbreak, phishing).
+
+Scoring: rule checks per example (`contains_expected`, `language_script`, `tool_used`, `no_unconfirmed_write`, `guardrail_correct`, overall `pass`), latency, and an LLM judge (`judge_correctness`, gpt-oss-20b) against a reference answer. Options: `--limit N`, `--no-judge`, `--refresh` (rebuild the dataset). A full run takes about 6–8 minutes and roughly 100k Groq tokens.
+
 ### Voice input
 
 **Spoken replies.** A question asked with the mic gets a short, phone-style answer: in Hindi (Devanagari) when the question is Hindi or Hinglish, otherwise in English. The answer is shown as text in the chat and read aloud live: each sentence is spoken as soon as the model has written it, while the rest is still being generated (Microsoft neural voices through `edge-tts`, no API key; the answer text is sent to Microsoft's speech service). IDs are read letter by letter and digit by digit ("O R D, 1 0 0 0 3"). Every answer also has a **Listen** button. `GET /api/tts/stream?text=...` streams the MP3 for one sentence; `POST /api/tts {text}` returns a whole MP3.

@@ -14,8 +14,12 @@ threads = db["chat_threads"]
 messages = db["chat_messages"]
 files = db["rag_files"]
 
+pending = db["pending_actions"]        # Salesforce changes waiting for the user's "yes"
+guard_events = db["guardrail_events"]  # what the guardrails blocked, and why
+
 messages.create_index([("thread_id", ASCENDING), ("created_at", ASCENDING)])
 threads.create_index([("updated_at", DESCENDING)])
+guard_events.create_index([("created_at", DESCENDING)])
 
 
 def _now() -> datetime:
@@ -60,6 +64,7 @@ def pin_thread(thread_id: str, pinned: bool) -> None:
 
 def delete_thread(thread_id: str) -> bool:
     messages.delete_many({"thread_id": thread_id})
+    pending.delete_many({"_id": thread_id})
     return threads.delete_one({"_id": thread_id}).deleted_count == 1
 
 
@@ -79,7 +84,8 @@ def _thread_out(doc: dict) -> dict:
 
 def add_message(thread_id: str, role: str, content: str, *, sources: list[dict] | None = None,
                 usage: dict | None = None, run_id: str | None = None, duration_ms: int | None = None,
-                tools: list[str] | None = None) -> dict:
+                tools: list[str] | None = None, guardrail: dict | None = None,
+                pending_action: dict | None = None) -> dict:
     doc = {
         "_id": str(uuid.uuid4()),
         "thread_id": thread_id,
@@ -90,6 +96,8 @@ def add_message(thread_id: str, role: str, content: str, *, sources: list[dict] 
         "run_id": run_id,
         "duration_ms": duration_ms,
         "tools": tools or [],
+        "guardrail": guardrail,
+        "pending_action": pending_action,
         "created_at": _now(),
     }
     messages.insert_one(doc)
@@ -120,8 +128,43 @@ def _message_out(doc: dict) -> dict:
         "run_id": doc.get("run_id"),
         "duration_ms": doc.get("duration_ms"),
         "tools": doc.get("tools", []),
+        "guardrail": doc.get("guardrail"),
+        "pending_action": doc.get("pending_action"),
         "created_at": _iso(doc.get("created_at")),
     }
+
+
+# ---------- guardrails ----------
+
+def set_pending_action(thread_id: str, tool: str, args: dict, summary: str) -> None:
+    """One pending Salesforce change per thread; a newer one replaces the older."""
+    pending.replace_one({"_id": thread_id},
+                        {"_id": thread_id, "tool": tool, "args": args, "summary": summary, "created_at": _now()},
+                        upsert=True)
+
+
+def get_pending_action(thread_id: str, max_age_s: int) -> dict | None:
+    doc = pending.find_one({"_id": thread_id})
+    if not doc:
+        return None
+    created = doc["created_at"] if doc["created_at"].tzinfo else doc["created_at"].replace(tzinfo=timezone.utc)
+    if (_now() - created).total_seconds() > max_age_s:
+        pending.delete_one({"_id": thread_id})
+        return None
+    return doc
+
+
+def clear_pending_action(thread_id: str) -> None:
+    pending.delete_one({"_id": thread_id})
+
+
+def log_guardrail(kind: str, category: str, *, thread_id: str | None = None, visitor: str | None = None,
+                  detail: str = "", excerpt: str = "") -> None:
+    try:
+        guard_events.insert_one({"kind": kind, "category": category, "thread_id": thread_id, "visitor": visitor,
+                                 "detail": detail[:300], "excerpt": excerpt[:200], "created_at": _now()})
+    except Exception:
+        pass  # logging must never break a chat turn
 
 
 # ---------- indexed files ----------
