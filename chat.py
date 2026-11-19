@@ -205,6 +205,27 @@ def _is_english_in_devanagari(text: str) -> bool:
     return sum(w in _ENGLISH_IN_DEVANAGARI for w in words) / len(words) >= 0.6
 
 
+def _reply_language(question: str, voice: bool) -> str:
+    """'english' | 'hindi' (Devanagari) | 'hinglish' (Hindi in Latin letters, typed only)."""
+    if re.search(r"[ऀ-ॿ]", question):
+        return "english" if _is_english_in_devanagari(question) else "hindi"
+    if len({w.lower() for w in _HINGLISH_WORDS.findall(question)}) >= 2:
+        return "hindi" if voice else "hinglish"
+    return "english"
+
+
+def _reply_language_note(question: str, voice: bool) -> str:
+    lang = _reply_language(question, voice)
+    if lang == "english":
+        if re.search(r"[ऀ-ॿ]", question):
+            return ("(Note: I spoke English; speech recognition wrote my English words in Hindi letters. "
+                    "Reply in English only.)")
+        return "(Reply in English only.)"
+    if lang == "hindi":
+        return "(कृपया हिंदी में, देवनागरी लिपि में जवाब दें।)"
+    return "(Reply in Hinglish: Hindi words in Latin letters.)"
+
+
 def _message_language_hint(question: str, voice: bool) -> str:
     """A concrete per-message signal: which script the user wrote in and which language to reply in."""
     if re.search(r"[ऀ-ॿ]", question):
@@ -312,6 +333,13 @@ def _stream_round(model, messages, emit, parts, run_name):
     return full
 
 
+def _is_bad_tool_call(exc: Exception) -> bool:
+    """Groq's rejection of a malformed tool call (not a rate limit or outage)."""
+    text = str(exc).lower()
+    return ("tool call validation failed" in text or "not in request.tools" in text
+            or ("tool" in text and ("400" in text or "badrequest" in type(exc).__name__.lower())))
+
+
 def _confirmation_needed(name: str) -> bool:
     return name in guardrails.WRITE_TOOLS and config.GUARDRAILS_ENABLED and config.GUARDRAILS_CONFIRM_WRITES
 
@@ -333,18 +361,21 @@ def _answer_with_tools(messages, emit, effort: str | None = None, thread_id: str
     full = None
     for round_no in range(MAX_TOOL_ROUNDS + 1):
         last_round = round_no == MAX_TOOL_ROUNDS
-        try:
-            full = _stream_round(llm if last_round else model, messages, emit, parts,
-                                 "answer" if not used else "answer_after_tools")
-        except Exception as exc:
-            # Groq rejects malformed tool calls (e.g. a tool name the model invented) with a 400;
-            # only then answer without tools. Rate limits and outages are raised as they are.
-            text = str(exc).lower()
-            bad_tool_call = "tool" in text and ("400" in text or "badrequest" in type(exc).__name__.lower())
-            if model is llm or parts or not bad_tool_call:
-                raise
-            log.warning("tool-enabled call failed (%s: %s), retrying without tools", type(exc).__name__, exc)
-            full = _stream_round(llm, messages, emit, parts, "answer_no_tools")
+        # Groq rejects malformed tool calls (an invented tool name, missing arguments). The model
+        # usually gets it right on a second try; after that, answer without tools.
+        attempts = [llm] if (last_round or model is llm) else [model, model, llm]
+        for attempt_no, attempt_model in enumerate(attempts):
+            before = len(parts)
+            try:
+                full = _stream_round(attempt_model, messages, emit, parts,
+                                     "answer" if not used else "answer_after_tools")
+                break
+            except Exception as exc:
+                retryable = _is_bad_tool_call(exc) and len(parts) == before
+                if not retryable or attempt_no == len(attempts) - 1:
+                    raise
+                log.warning("bad tool call (%s), retrying%s", str(exc)[:120],
+                            " without tools" if attempts[attempt_no + 1] is llm else "")
         if full is not None:
             usage = _add_usage(usage, _usage(full))
         calls = (getattr(full, "tool_calls", None) or []) if full is not None else []
@@ -502,6 +533,11 @@ def run_turn(thread_id: str, question: str, history: list[dict],
     #    Same for general questions ("Bharat ki rajdhani kya hai"): the full tables are only
     #    attached when the question uses file words, an ID, or a name/product from the files.
     about_files = is_about_files(search_query)
+    # "Delhi weather" matched only because Delhi appears in the orders' addresses: a live-data
+    # question without order/product words or IDs does not need the file tables.
+    if (about_files and _LIVE_INTENT.search(search_query) and not _FILE_INTENT.search(search_query)
+            and not _ID_IN_TEXT.search(rag.normalize_ids(search_query))):
+        about_files = False
     sf_only = bool(TOOLS) and bool(_SF_INTENT.search(search_query)) and not about_files
     docs = rag.retrieve(search_query, k=config.TOP_K if about_files else 2, pin_tables=about_files)
     sources = _sources(docs)
@@ -526,13 +562,10 @@ def run_turn(thread_id: str, question: str, history: list[dict],
         message_language=_message_language_hint(question, voice),
         context=_format_context(docs),
     )
-    # English speech spelled in Hindi letters: the system-prompt hint alone was not always followed,
-    # so the note goes with the message itself (the saved chat keeps exactly what the user said).
-    user_turn = question
-    if _is_english_in_devanagari(question):
-        user_turn = (f"{question}\n\n(Note: I spoke English; speech recognition wrote my English words in "
-                     "Hindi letters. Please reply in English only.)")
-    messages = [SystemMessage(system), *past, HumanMessage(user_turn)]
+    # Reply language: English in -> English out, Hindi in -> Hindi out. The system-prompt hint alone
+    # was not always followed (an English voice question sometimes got a Hindi answer), so a short
+    # note goes with the message itself. The saved chat keeps exactly what the user said.
+    messages = [SystemMessage(system), *past, HumanMessage(f"{question}\n\n{_reply_language_note(question, voice)}")]
     # Output filter: tokens pass through OutputGuard, which holds back the last few characters
     # and checks for keys / system-prompt text before anything reaches the browser.
     out_guard = guardrails.OutputGuard(emit) if guard_on and config.GUARDRAILS_OUTPUT_FILTER else None
