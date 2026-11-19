@@ -526,7 +526,13 @@ def run_turn(thread_id: str, question: str, history: list[dict],
         message_language=_message_language_hint(question, voice),
         context=_format_context(docs),
     )
-    messages = [SystemMessage(system), *past, HumanMessage(question)]
+    # English speech spelled in Hindi letters: the system-prompt hint alone was not always followed,
+    # so the note goes with the message itself (the saved chat keeps exactly what the user said).
+    user_turn = question
+    if _is_english_in_devanagari(question):
+        user_turn = (f"{question}\n\n(Note: I spoke English; speech recognition wrote my English words in "
+                     "Hindi letters. Please reply in English only.)")
+    messages = [SystemMessage(system), *past, HumanMessage(user_turn)]
     # Output filter: tokens pass through OutputGuard, which holds back the last few characters
     # and checks for keys / system-prompt text before anything reaches the browser.
     out_guard = guardrails.OutputGuard(emit) if guard_on and config.GUARDRAILS_OUTPUT_FILTER else None
