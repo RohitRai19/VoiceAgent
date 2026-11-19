@@ -126,10 +126,24 @@ def get_stock_price(company_or_symbol: str) -> str:
             return _err(f"could not find a listed company or ticker for '{company_or_symbol}'.")
         t = yf.Ticker(symbol)
         fi = t.fast_info
-        price = fi.get("lastPrice")
-        prev = fi.get("previousClose")
+
+        def info(key):
+            # fast_info sometimes raises for indices (e.g. KeyError 'currentTradingPeriod'); treat as missing.
+            try:
+                return fi.get(key)
+            except Exception:
+                return None
+
+        price, prev = info("lastPrice"), info("previousClose")
         if price is None:
-            return _err(f"no price data for {symbol}.")
+            # Fallback: last daily closes from the price history.
+            hist = t.history(period="5d", interval="1d")
+            closes = [float(v) for v in hist["Close"].dropna().tolist()] if hist is not None and len(hist) else []
+            if not closes:
+                return _err(f"no price data for {symbol}.")
+            price = closes[-1]
+            prev = closes[-2] if len(closes) > 1 else None
+        fi = {k: info(k) for k in ("currency", "exchange", "dayLow", "dayHigh", "yearLow", "yearHigh", "marketCap")}
         change = (price - prev) if prev else None
         name = None
         try:

@@ -635,6 +635,9 @@ async function send(text, opts = {}) {
           setHeader({ thread_id: data.thread_id, title: data.title, total_tokens: 0 });
         } else if (ev === "confirm") {
           pendingAction = data;
+        } else if (ev === "relabel") {
+          // The server removed a wrong "General knowledge" label; show the corrected text.
+          answer = data.text; bubble.innerHTML = md(answer);
         } else if (ev === "redact") {
           // The output guardrail replaced the answer (it would have leaked a key or internal settings).
           answer = data.text; bubble.innerHTML = md(answer);

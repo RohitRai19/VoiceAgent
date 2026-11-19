@@ -185,12 +185,33 @@ _HINGLISH_WORDS = re.compile(
     re.IGNORECASE)
 
 
+# Speech recognition in Hindi mode spells English speech in Devanagari ("प्लीज शो मी माय ओपन केसेस").
+# English words as they are commonly spelled in Devanagari, and Hindi grammar words that show real Hindi.
+_ENGLISH_IN_DEVANAGARI = set(
+    "प्लीज प्लीज़ शो मी माय माई ओपन केसेस केस केसिस टिकट्स टिकट व्हाट वाट इज द दि ऑफ हाउ हाऊ कैन यू टेल अबाउट "
+    "वेदर टुडे लेटेस्ट न्यूज न्यूज़ स्टेटस ऑर्डर ऑर्डर्स नंबर प्राइस शेयर थैंक्स थैंक यू हेल्प फाइंड सर्च क्रिएट "
+    "अपडेट डिलीवरी रिफंड स्टॉक लिस्ट ऑल इन फॉर एंड ऑर एट टू डू डज़ डज विल कुड वुड गिव गेट सेंड चेक व्हेयर "
+    "व्हेन व्हाई हू विच दिस दैट वॉट इट आई वी देयर प्रोडक्ट्स प्रोडक्ट कस्टमर कस्टमर्स ईमेल लेटेस्ट रिसेंट "
+    "करंट नाउ राइट प्रायोरिटी हाई लो मीडियम न्यू".split())
+_HINDI_FUNCTION_WORDS = set(
+    "का की के है हैं था थी थे क्या मेरा मेरी मेरे कब कहाँ कहां कैसे कैसा कितना कितने में से को और भी नहीं ना "
+    "आप आपका तुम दिखाओ दिखाइए बताओ बताइए करो करें कर चाहिए हो होगा गया गई वाला वाली अभी आज यह वह ये वो".split())
+
+
+def _is_english_in_devanagari(text: str) -> bool:
+    words = re.findall(r"[ऀ-ॿ]+", text)
+    if len(words) < 2 or any(w in _HINDI_FUNCTION_WORDS for w in words):
+        return False
+    return sum(w in _ENGLISH_IN_DEVANAGARI for w in words) / len(words) >= 0.6
+
+
 def _message_language_hint(question: str, voice: bool) -> str:
     """A concrete per-message signal: which script the user wrote in and which language to reply in."""
     if re.search(r"[ऀ-ॿ]", question):
-        return ("- THIS MESSAGE is written in Devanagari. If it is really English words spelled in Hindi letters "
-                "(speech recognition does this, e.g. 'प्लीज शो मी माय ओपन केसेस' = 'please show me my open cases'), "
-                "the user is speaking English: reply in English. Otherwise reply in Hindi, in Devanagari.")
+        if _is_english_in_devanagari(question):
+            return ("- THIS MESSAGE is ENGLISH: the user spoke English and speech recognition spelled it in "
+                    "Hindi letters. Reply in English only, with no Hindi words and no Devanagari.")
+        return "- THIS MESSAGE is written in Devanagari (Hindi): reply in Hindi, in Devanagari."
     if len({w.lower() for w in _HINGLISH_WORDS.findall(question)}) >= 2:
         return ("- THIS MESSAGE is Hinglish (Hindi in Latin letters): reply in Hindi"
                 + (", written in Devanagari (it will be spoken)." if voice else ", in Latin letters (Hinglish)."))
@@ -199,7 +220,7 @@ def _message_language_hint(question: str, voice: bool) -> str:
 
 VOICE_RULES = """
 SPOKEN QUESTION: the user asked this by voice. Your reply is shown as text AND read aloud by a text-to-speech voice. These rules override the formatting, citation and script rules above (including the Hinglish-in-Latin-letters rule):
-- If the question is in Hindi or Hinglish (Hindi words in any script), reply in natural spoken Hindi written in Devanagari script, never in Latin letters. Otherwise reply in English.
+- Language: follow the "THIS MESSAGE" line above. If the user spoke Hindi or Hinglish, reply in natural spoken Hindi written in Devanagari, never in Latin letters. If they spoke English (even if the transcript spells English words in Hindi letters), reply in English.
 - Keep it short and conversational: 1 to 3 sentences, like a support agent on a phone call.
 - No tables, bullet lists, markdown, emojis, URLs or citation numbers like [1].
 - Say amounts and dates the way a person would, for example "1,999 रुपये", "16 नवंबर". Keep IDs as written, for example ORD-10003, case 00001069.
@@ -541,8 +562,16 @@ def run_turn(thread_id: str, question: str, history: list[dict],
             store.clear_pending_action(thread_id)
             guardrail = {"blocked": True, "stage": "output", "category": leak}
 
+    # The model sometimes puts the general-knowledge label on answers that came from a tool or
+    # cite the files. Such an answer is not general knowledge, so remove the label.
+    labelled = answer.lstrip("_* \n").lower().startswith(GENERAL_MARKER.lower().rstrip("."))
+    if labelled and (tools_used or proposed or re.search(r"\[\d+\]", answer)):
+        answer = re.sub(r"^\s*[_*]*\s*" + re.escape(GENERAL_MARKER.rstrip(".")) + r"\.?\s*[_*]*\s*\n*", "",
+                        answer, count=1, flags=re.IGNORECASE).lstrip()
+        emit("relabel", {"text": answer})
+        labelled = False
     # A general-knowledge reply did not use the files, so do not list file sources under it.
-    from_files = not answer.lstrip("_* \n").lower().startswith(GENERAL_MARKER.lower().rstrip("."))
+    from_files = not labelled
     if not from_files:
         sources = []
     # A Salesforce answer that cites no excerpt did not use the files either.
