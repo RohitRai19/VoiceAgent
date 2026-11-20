@@ -40,6 +40,8 @@ LIVE_RULES = """
 Live data tools:
 - get_weather: weather and forecast for a place (pass the place name in English, e.g. "Delhi" for दिल्ली or Dilli).
 - get_stock_price: share price of a company or index (company name or ticker; Indian companies resolve to NSE).
+- Gold, silver, petrol and other commodity rates: use web_search (Indian rates in rupees, e.g. per 10 g or per kg), not get_stock_price.
+- If get_stock_price returns an error, call web_search once for the same price before saying you could not get it.
 - web_search: current news, recent events, or facts that may have changed since your training. Do not use it for questions the files or Salesforce answer.
 - Answer in the user's language using the tool's numbers. For web_search, base the answer on the returned results and name the sources briefly (site names; full URLs only in typed answers, never in voice answers).
 """
@@ -48,8 +50,9 @@ _LIVE_INTENT = re.compile(
     r"\b(weather|temperature|forecast|rain\w*|humid\w*|wind|mausam|barish|baarish|tapman|garmi|thand|"
     r"shares?|stocks? price|share price|price of|nifty|sensex|markets?|trading|ticker|crypto|bitcoin|"
     r"news|latest|today'?s?|tonight|current(ly)?|recent(ly)?|right now|this week|aaj|abhi|khabar|samachar|"
-    r"headlines?|score|election|who won|exchange rate|dollar|rupee rate)\b"
-    r"|मौसम|बारिश|तापमान|गर्मी|ठंड|शेयर|भाव|बाज़ार|बाजार|खबर|ख़बर|समाचार|आज|अभी|ताज़ा|ताजा",
+    r"headlines?|score|election|who won|exchange rate|dollar|rupee rate|"
+    r"gold|silver|sona|sone|chandi|chaandi|petrol|diesel|commodit\w*)\b"
+    r"|सोना|सोने|चांदी|चाँदी|पेट्रोल|डीजल|मौसम|बारिश|तापमान|गर्मी|ठंड|शेयर|भाव|बाज़ार|बाजार|खबर|ख़बर|समाचार|आज|अभी|ताज़ा|ताजा",
     re.IGNORECASE)
 
 
@@ -151,10 +154,12 @@ STRICT_RULES = """- Answer ONLY from the numbered context excerpts below. Do not
 GENERAL_RULES = """- First decide what kind of question this is.
 - FILE QUESTION: anything about the data the files cover (for example orders, customers, tracking, refunds, payments, stock, products the store sells, prices, suppliers, store policies), including a specific order ID, SKU or customer name. Answer these ONLY from the numbered context excerpts below. If the excerpts do not contain the answer, say you could not find it in the uploaded files. Never invent or guess an order, customer, product, date, amount or status, and never fill gaps with outside knowledge.
 - GENERAL QUESTION: anything unrelated to the files' data (general knowledge, definitions, how-to, coding, writing, casual chat). Answer these normally from your own knowledge. Begin the reply with this exact first line in italics, always in English: _""" + GENERAL_MARKER + """_ Then answer in the user's language (see LANGUAGE). Do not cite excerpts in such a reply.
-- LIVE DATA: for anything that changes over time (weather, share prices, market indices, news, recent events, sports scores, exchange rates) use the matching tool when it is available: get_weather, get_stock_price, web_search. Quote only the numbers and facts the tool returned, and say where they come from (and that share prices may be delayed). Do not start such an answer with the general-knowledge line. If no tool covers it, or the tool returns text starting with "Error", say plainly that you could not get live data and never state a number, range or condition yourself, not even an estimate.
+- LIVE DATA: for anything that changes over time (weather, share prices, market indices, gold / silver / fuel prices, news, recent events, sports scores, exchange rates) use the matching tool when it is available: get_weather, get_stock_price, web_search. Quote only the numbers and facts the tool returned, and say where they come from (and that share prices may be delayed). Do not start such an answer with the general-knowledge line. If no tool covers it, or the tool returns text starting with "Error", say plainly that you could not get live data and never state a number, range or condition yourself, not even an estimate.
 - If unsure which kind it is, treat it as a FILE QUESTION."""
 
 ANSWER_PROMPT = """You are an assistant that answers questions using the user's own uploaded files.
+
+WHO IS ASKING: the store's own support team / owner, not an end customer. "My orders", "mere orders", "मेरे सारे order", "order history" and "all orders" mean all the orders in the files: answer from the excerpts directly. Never ask for a name, email, phone number or login to look up orders. Only when the user means one particular order without saying which, ask for the order ID or customer name.
 
 LANGUAGE (most important; applies to EVERY reply: file answers, general-knowledge answers, Salesforce answers, refusals and "I don't know" replies):
 - Reply in the language the user used in their latest message. Hindi or Hinglish question -> Hindi reply; English question -> English reply.
@@ -242,7 +247,7 @@ def _message_language_hint(question: str, voice: bool) -> str:
 VOICE_RULES = """
 SPOKEN QUESTION: the user asked this by voice. Your reply is shown as text AND read aloud by a text-to-speech voice. These rules override the formatting, citation and script rules above (including the Hinglish-in-Latin-letters rule):
 - Language: follow the "THIS MESSAGE" line above. If the user spoke Hindi or Hinglish, reply in natural spoken Hindi written in Devanagari, never in Latin letters. If they spoke English (even if the transcript spells English words in Hindi letters), reply in English.
-- Keep it short and conversational: 1 to 3 sentences, like a support agent on a phone call.
+- Keep it short and conversational: 1 to 3 sentences, like a support agent on a phone call. Even when asked for "everything" or "all details", give the two or three most useful facts and offer to tell more. Do not read out email addresses or phone numbers unless the user asks for them.
 - No tables, bullet lists, markdown, emojis, URLs or citation numbers like [1].
 - Say amounts and dates the way a person would, for example "1,999 रुपये", "16 नवंबर". Keep IDs as written, for example ORD-10003, case 00001069.
 - If you need more information (for example which order or case number), ask for it in one short sentence.
@@ -344,8 +349,37 @@ def _confirmation_needed(name: str) -> bool:
     return name in guardrails.WRITE_TOOLS and config.GUARDRAILS_ENABLED and config.GUARDRAILS_CONFIRM_WRITES
 
 
+class _BlockedBySafetyCheck(Exception):
+    def __init__(self, verdict):
+        super().__init__(verdict.reason)
+        self.verdict = verdict
+
+
+class _SafetyGate:
+    """The small-model safety check runs while the answer is already being generated (saves
+    2-3 s). Nothing leaves this gate before the check has passed: no word, no tool call,
+    no Salesforce proposal. A blocked question raises _BlockedBySafetyCheck."""
+
+    def __init__(self, future, on_open):
+        self._future, self._on_open, self._open = future, on_open, False
+
+    def __call__(self) -> None:
+        if self._open:
+            return
+        verdict = None
+        if self._future is not None:
+            try:
+                verdict = self._future.result(timeout=config.GUARDRAILS_LLM_TIMEOUT_S + 2)
+            except Exception:
+                verdict = guardrails.Verdict(True, "check_failed", "timeout", "llm")
+        if verdict is not None and not verdict.allowed:
+            raise _BlockedBySafetyCheck(verdict)
+        self._open = True
+        self._on_open()
+
+
 def _answer_with_tools(messages, emit, effort: str | None = None, thread_id: str | None = None,
-                       tools: list | None = None):
+                       tools: list | None = None, gate=None):
     """Stream the answer. When Salesforce tools are connected the model may call them first;
     each call runs, its result goes back to the model, and the final text streams to the user.
     Salesforce changes (create/update/comment) are NOT run here when confirmation is on: they are
@@ -381,6 +415,8 @@ def _answer_with_tools(messages, emit, effort: str | None = None, thread_id: str
         calls = (getattr(full, "tool_calls", None) or []) if full is not None else []
         if not calls or last_round:
             break
+        if gate is not None:
+            gate()  # no tool runs before the safety check has passed
         messages.append(AIMessage(content=full.content or "", tool_calls=calls))
         for call in calls:
             name = call.get("name", "")
@@ -541,15 +577,8 @@ def run_turn(thread_id: str, question: str, history: list[dict],
     sf_only = bool(TOOLS) and bool(_SF_INTENT.search(search_query)) and not about_files
     docs = rag.retrieve(search_query, k=config.TOP_K if about_files else 2, pin_tables=about_files)
     sources = _sources(docs)
-
-    if llm_check is not None:
-        try:
-            verdict = llm_check.result(timeout=config.GUARDRAILS_LLM_TIMEOUT_S + 2)
-        except Exception:
-            verdict = guardrails.Verdict(True, "check_failed", "timeout", "llm")
-        if not verdict.allowed:
-            return _blocked(question, verdict, emit, thread_id, visitor, usage)
-    emit("sources", {"sources": sources, "search_query": search_query})
+    # The safety check is still running; the answer starts now and the gate holds its output.
+    gate = _SafetyGate(llm_check, lambda: emit("sources", {"sources": sources, "search_query": search_query}))
 
     # 3. Answer, streaming tokens as they arrive (with only the tools this question can use)
     turn_tools = select_tools(f"{question} {search_query}", about_files)
@@ -565,16 +594,24 @@ def run_turn(thread_id: str, question: str, history: list[dict],
     # Reply language: English in -> English out, Hindi in -> Hindi out. The system-prompt hint alone
     # was not always followed (an English voice question sometimes got a Hindi answer), so a short
     # note goes with the message itself. The saved chat keeps exactly what the user said.
-    messages = [SystemMessage(system), *past, HumanMessage(f"{question}\n\n{_reply_language_note(question, voice)}")]
+    # IDs as the files write them ("ORD10001" from speech -> "ORD-10001"), so the model matches them.
+    messages = [SystemMessage(system), *past,
+                HumanMessage(f"{rag.normalize_ids(question)}\n\n{_reply_language_note(question, voice)}")]
     # Output filter: tokens pass through OutputGuard, which holds back the last few characters
     # and checks for keys / system-prompt text before anything reaches the browser.
     out_guard = guardrails.OutputGuard(emit) if guard_on and config.GUARDRAILS_OUTPUT_FILTER else None
-    stream_emit = emit
-    if out_guard is not None:
-        def stream_emit(kind, data):
-            out_guard.feed(data["text"]) if kind == "token" else emit(kind, data)
-    full, parts, tools_used = _answer_with_tools(messages, stream_emit, effort="low" if voice else None,
-                                                 thread_id=thread_id, tools=turn_tools)
+    def stream_emit(kind, data):
+        gate()
+        if out_guard is not None and kind == "token":
+            out_guard.feed(data["text"])
+        else:
+            emit(kind, data)
+    try:
+        full, parts, tools_used = _answer_with_tools(messages, stream_emit, effort="low" if voice else None,
+                                                     thread_id=thread_id, tools=turn_tools, gate=gate)
+        gate()  # an empty answer still waits for the verdict
+    except _BlockedBySafetyCheck as blocked:
+        return _blocked(question, blocked.verdict, emit, thread_id, visitor, usage)
     usage = _add_usage(usage, full.pop("usage"))
     proposed = full.pop("proposed")
     full = full["last"]

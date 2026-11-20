@@ -24,7 +24,8 @@ SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | {".pdf", ".docx", ".csv"}
 # Code-like tokens: contain a digit, e.g. ORD-10003, SKU-ELEC-001, DLV8812345671
 _CODE_RE = re.compile(r"\b(?=[A-Za-z0-9\-_]*\d)[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b")
 # Spoken / dictated IDs: "SKU ELEC 003" -> "SKU-ELEC-003", "ORD 10013" -> "ORD-10013".
-_SPOKEN_ID_RE = re.compile(r"\b(sku|ord)\s*[- ]\s*(?:(?!ord\b)([a-z]{2,5})\s*[- ]\s*)?(\d{3,})\b", re.IGNORECASE)
+# "ORD 10001", "sku elec 1001", and also "ORD10001" (live speech-to-text joins them); never "order 10001".
+_SPOKEN_ID_RE = re.compile(r"\b(sku|ord)(?:\s*[- ]\s*(?:(?!ord\b)([a-z]{2,5})\s*[- ]\s*)?|(?=\d))(\d{3,})\b", re.IGNORECASE)
 # Speech engines often space out digits and letters: "1 0 0 1 3", "o r d".
 _SPACED_DIGITS_RE = re.compile(r"\b\d(?:\s\d){2,}\b")
 _SPACED_ORD_RE = re.compile(r"\bo\.?\s*r\.?\s*d\.?(?=\s|-|\d|$)", re.IGNORECASE)

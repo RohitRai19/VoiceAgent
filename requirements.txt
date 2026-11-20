@@ -18,6 +18,12 @@ python-docx
 groq>=0.11
 edge-tts>=6.1
 
+# Live voice mode (live_voice.py): Pipecat pipeline with Sarvam live speech-to-text and streaming voice
+pipecat-ai[sarvam,websocket]==1.16.0
+# WebRTC audio for live voice (the browser's echo cancellation works with it). Only aiortc is
+# needed, not pipecat's full "webrtc" extra, which also pulls in OpenCV for video.
+aiortc>=1.14.0,<2
+
 # Live data tools (live_tools.py): share prices from Yahoo Finance
 yfinance>=0.2.50
 

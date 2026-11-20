@@ -13,7 +13,7 @@ from pathlib import Path
 
 import config  # noqa: F401  (loads .env and configures LangSmith before other imports)
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from groq import Groq
 from pydantic import BaseModel, Field
@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 log = logging.getLogger("app")
 
 
-def _visitor(request: Request) -> str:
+def _visitor(request: Request | WebSocket) -> str:
     """The visitor's IP. Behind the Caddy proxy (a private Docker address) use X-Forwarded-For."""
     host = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("x-forwarded-for", "")
@@ -90,6 +90,9 @@ async def lifespan(_: FastAPI):
     extra = live_tools.load_live_tools()
     log.info("live data tools: %s", ", ".join(t.name for t in extra) or "none")
     chat.TOOLS = sf_tools + extra
+    if config.SARVAM_API_KEY:
+        # Load live voice (Pipecat, WebRTC) in the background so the first live session starts quickly.
+        asyncio.get_running_loop().run_in_executor(None, _live_voice)
     yield
 
 
@@ -147,6 +150,7 @@ async def health():
         "embed_model": config.EMBED_MODEL,
         "chunks": rag.chunk_count(),
         "langsmith_tracing": config.TRACING_ENABLED,
+        "live_voice": bool(config.SARVAM_API_KEY),
         "langsmith_project": config.LANGSMITH_PROJECT,
         "guardrails": {
             "enabled": config.GUARDRAILS_ENABLED,
@@ -438,3 +442,60 @@ async def chat_turn(body: ChatIn, request: Request):
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------- live voice (Sarvam, real time, interruptible) ----------
+
+class LiveOffer(BaseModel):
+    sdp: str = Field(min_length=1, max_length=20000)
+    type: str = Field(pattern="^offer$")
+    thread_id: str | None = None
+
+
+def _live_voice():
+    import live_voice  # loaded on first use: Pipecat and the voice-activity model are large
+    return live_voice
+
+
+@app.get("/api/live/config")
+async def live_config(request: Request):
+    if not config.SARVAM_API_KEY:
+        raise HTTPException(503, "Live voice is not set up (no SARVAM_API_KEY).")
+    return {"ice_servers": _live_voice().ice_servers_for_browser(_visitor(request))}
+
+
+@app.post("/api/live/offer")
+async def live_offer(body: LiveOffer, request: Request):
+    """WebRTC handshake: the page's offer in, the server's answer out; the live session then runs."""
+    if not config.SARVAM_API_KEY:
+        raise HTTPException(503, "Live voice is not set up (no SARVAM_API_KEY).")
+    _rate_limit(request, "live", config.GUARDRAILS_MSGS_PER_MINUTE)
+    try:
+        return await _live_voice().start_webrtc_session(body.sdp, body.type, body.thread_id, _visitor(request))
+    except Exception as exc:
+        log.exception("live voice WebRTC offer failed")
+        raise HTTPException(500, "Could not start live voice.") from exc
+
+
+@app.websocket("/ws/live")
+async def live_voice_session(websocket: WebSocket, thread_id: str | None = None):
+    """Fallback when WebRTC cannot connect: raw audio over a WebSocket."""
+    await websocket.accept()
+    if not config.SARVAM_API_KEY:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Live voice is not set up (no SARVAM_API_KEY)."}))
+        await websocket.close()
+        return
+    visitor = _visitor(websocket)
+    ok, wait = guardrails.limiter.allow("live", visitor, config.GUARDRAILS_MSGS_PER_MINUTE)
+    if not ok:
+        await websocket.send_text(json.dumps({"type": "error", "message": f"Too many requests. Wait about {wait}s."}))
+        await websocket.close()
+        return
+    await _live_voice().run_websocket_session(websocket, thread_id, visitor)
+
+
+if __name__ == "__main__":
+    # Local run: python app.py  (open http://127.0.0.1:8000)
+    import uvicorn
+
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)

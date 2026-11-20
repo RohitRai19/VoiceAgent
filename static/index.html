@@ -151,6 +151,11 @@
   #send:disabled { opacity: .5; cursor: default; }
   #mic.recording { color: #fff; background: #ef5350; animation: pulse 1.1s ease-in-out infinite; }
   #mic:disabled { opacity: .5; cursor: default; }
+  #live.on { color: #fff; background: #10b981; animation: pulse 1.6s ease-in-out infinite; }
+  .status.listening i { background: #10b981; animation: pulse 1.6s ease-in-out infinite; }
+  .status.speaking i { background: #60a5fa; }
+  .msg.user .bubble.partial { opacity: .6; font-style: italic; }
+  .live-note { text-align: center; color: var(--muted); font-size: 13px; margin: 6px 0 14px; }
   .icon-btn.small { width: 22px; margin-right: -6px; }
   .icon-btn.small svg { width: 16px; height: 16px; }
   .menu .check { width: 16px; flex: none; text-align: center; }
@@ -187,6 +192,7 @@
   <form id="form">
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Ask something about your files…" autofocus></textarea>
+      <button id="live" class="icon-btn" type="button" hidden aria-label="Start live voice conversation" title="Live voice: talk naturally, interrupt any time (stops after silence)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4M7 7v10M11 4v16M15 8v8M19 10v4"/></svg></button>
       <button id="mic-device" class="icon-btn small" type="button" aria-label="Choose microphone" title="Choose microphone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
       <button id="mic" class="icon-btn" type="button" aria-label="Speak your question" title="Speak your question"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
       <button id="send" type="submit">Send</button>
@@ -349,10 +355,11 @@ function openMenu(anchor, row, items) {
 function setHeader(thread) {
   $("title").textContent = thread ? thread.title : "New chat";
 }
-const STATUS = { ready: "Ready", busy: "Thinking…", speaking: "Speaking…", offline: "Offline" };
+const STATUS = { ready: "Ready", busy: "Thinking…", speaking: "Speaking…", offline: "Offline", listening: "Live · listening…", connecting: "Live · connecting…" };
 function setStatus(kind) {
   $("status").className = "status" + (kind === "ready" ? "" : " " + kind);
   $("status-text").textContent = STATUS[kind];
+  if (kind === "connecting") $("status").className = "status busy";
 }
 const THEME_ICONS = {
   dark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>',
@@ -365,6 +372,7 @@ function applyTheme(theme, save) {
 }
 function newChat() {
   if (state.busy) return;
+  if (live) stopLive();  // a live session writes to one chat; switching chats ends it
   state.threadId = null;
   history.replaceState(null, "", location.pathname);
   setHeader(null);
@@ -378,6 +386,7 @@ function newChat() {
 }
 async function openThread(id) {
   if (state.busy) return;
+  if (live && id !== state.threadId) stopLive();
   try {
     const t = await api("/api/threads/" + id);
     state.threadId = id;
@@ -965,6 +974,219 @@ document.addEventListener("keydown", (e) => {
 // Without browser recognition only auto-detect (Whisper) is possible, so the menu is not needed.
 if (!SpeechRec) $("mic-device").hidden = true;
 
+/* ---------- live voice (real time, interruptible; Sarvam on the server) ---------- */
+// One AudioContext for mic and speaker, so the browser's echo cancellation sees the bot's voice.
+// Mic: resampled to 16 kHz 16-bit PCM, sent in 20 ms packets. Speaker: 24 kHz PCM from the server,
+// played from a queue that is emptied the moment the server says "interrupt".
+const LIVE_WORKLET = `
+class Mic extends AudioWorkletProcessor {
+  constructor() { super(); this.step = sampleRate / 16000; this.t = 0; this.buf = new Int16Array(320); this.n = 0; }
+  process(inputs) {
+    const x = inputs[0] && inputs[0][0]; if (!x) return true;
+    while (this.t < x.length) {
+      const i = Math.floor(this.t), f = this.t - i, a = x[i], b = i + 1 < x.length ? x[i + 1] : a;
+      const v = Math.max(-1, Math.min(1, a + (b - a) * f));
+      this.buf[this.n++] = v < 0 ? v * 32768 : v * 32767;
+      if (this.n === this.buf.length) { this.port.postMessage(this.buf.buffer, [this.buf.buffer]); this.buf = new Int16Array(320); this.n = 0; }
+      this.t += this.step;
+    }
+    this.t -= x.length;
+    return true;
+  }
+}
+class Speaker extends AudioWorkletProcessor {
+  constructor() {
+    super(); this.q = []; this.cur = null; this.pos = 0; this.step = 24000 / sampleRate;
+    this.port.onmessage = (e) => { if (e.data === "clear") { this.q = []; this.cur = null; this.pos = 0; } else this.q.push(new Int16Array(e.data)); };
+  }
+  process(_, outputs) {
+    const out = outputs[0][0];
+    for (let k = 0; k < out.length; k++) {
+      while (this.cur && this.pos >= this.cur.length) { this.pos -= this.cur.length; this.cur = this.q.shift() || null; }
+      if (!this.cur) { this.cur = this.q.shift() || null; this.pos = 0; if (!this.cur) { out[k] = 0; continue; } }
+      const i = Math.floor(this.pos), f = this.pos - i, a = this.cur[i];
+      const b = i + 1 < this.cur.length ? this.cur[i + 1] : (this.q[0] ? this.q[0][0] : a);
+      out[k] = (a + (b - a) * f) / 32768;
+      this.pos += this.step;
+    }
+    return true;
+  }
+}
+registerProcessor("live-mic", Mic);
+registerProcessor("live-speaker", Speaker);`;
+
+let live = null;
+const LIVE_MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+
+function liveButtonOn(on) {
+  $("live").classList.toggle("on", on);
+  $("live").title = on ? "Stop live voice" : "Live voice: talk naturally, interrupt any time (stops after silence)";
+  $("live").setAttribute("aria-label", on ? "Stop live voice" : "Start live voice conversation");
+  $("mic").disabled = on; $("send").disabled = on;
+}
+
+async function startLive() {
+  if (live || state.busy) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return notice("Live voice not available", "This browser does not support live audio. Try a recent Chrome or Edge.");
+  }
+  stopSpeaking();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: LIVE_MIC }); }
+  catch (e) { return notice("Microphone blocked", "Allow microphone access for this page in your browser, then try again."); }
+  live = { kind: "starting", stream, partial: null, turn: null, ended: false };  // a click now stops it
+  liveButtonOn(true); setStatus("connecting");
+  if (window.RTCPeerConnection && await startLiveRTC(stream)) return;
+  if (!live || live.stream !== stream) return;  // stopped while connecting
+  // WebRTC could not connect (blocked network): fall back to audio over a WebSocket.
+  if (!window.AudioWorkletNode) { stopLive(); return notice("Live voice not available", "Could not connect live audio on this network."); }
+  liveNote("Using the backup connection. Headphones work best on this one.");
+  startLiveWS(stream);
+}
+
+// WebRTC: the browser's own echo cancellation removes the bot's voice from the mic,
+// because the bot's audio arrives as a normal WebRTC call track.
+async function startLiveRTC(stream) {
+  let pc, dc, ping;
+  try {
+    const cfg = await api("/api/live/config");
+    pc = new RTCPeerConnection({ iceServers: cfg.ice_servers });
+    pc.addTransceiver(stream.getAudioTracks()[0], { direction: "sendrecv" });
+    dc = pc.createDataChannel("live", { ordered: true });
+    const audioEl = new Audio(); audioEl.autoplay = true;
+    pc.ontrack = (e) => { audioEl.srcObject = e.streams[0] || new MediaStream([e.track]); audioEl.play().catch(() => {}); };
+    if (!live || live.stream !== stream) throw new Error("stopped");
+    Object.assign(live, { kind: "webrtc", pc, dc, audioEl });
+    dc.onopen = () => { ping = setInterval(() => dc.readyState === "open" && dc.send("ping: " + Date.now()), 1000); };
+    dc.onmessage = (e) => { try { onLiveEvent(JSON.parse(e.data)); } catch {} };
+    live.ping = () => clearInterval(ping);
+
+    await pc.setLocalDescription(await pc.createOffer());
+    // Send the offer with all network candidates in it (one request, no follow-ups).
+    await new Promise((res) => {
+      if (pc.iceGatheringState === "complete") return res();
+      const t = setTimeout(res, 2500);
+      pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); } });
+    });
+    const answer = await api("/api/live/offer", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sdp: pc.localDescription.sdp, type: "offer", thread_id: state.threadId }) });
+    await pc.setRemoteDescription({ sdp: answer.sdp, type: answer.type });
+
+    const connected = await new Promise((res) => {
+      const done = (ok) => { clearTimeout(t); res(ok); };
+      const t = setTimeout(() => done(pc.connectionState === "connected"), 8000);
+      pc.addEventListener("connectionstatechange", () => {
+        if (pc.connectionState === "connected") done(true);
+        else if (pc.connectionState === "failed") done(false);
+      });
+    });
+    if (!connected) throw new Error("WebRTC did not connect");
+    pc.addEventListener("connectionstatechange", () => { if (["failed", "closed", "disconnected"].includes(pc.connectionState)) stopLive(); });
+    return true;
+  } catch (e) {
+    clearInterval(ping);
+    try { pc && pc.close(); } catch {}
+    if (live && live.stream === stream) Object.assign(live, { kind: "starting", pc: null, dc: null, audioEl: null });
+    return false;
+  }
+}
+
+// Backup path: our own audio worklets, raw audio over a WebSocket.
+async function startLiveWS(stream) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const url = URL.createObjectURL(new Blob([LIVE_WORKLET], { type: "application/javascript" }));
+  try { await ctx.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
+  if (!live || live.stream !== stream) { ctx.close().catch(() => {}); return; }  // stopped meanwhile
+  const mic = new AudioWorkletNode(ctx, "live-mic");
+  const speaker = new AudioWorkletNode(ctx, "live-speaker", { numberOfInputs: 0, outputChannelCount: [1] });
+  ctx.createMediaStreamSource(stream).connect(mic);
+  speaker.connect(ctx.destination);
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${proto}//${location.host}/ws/live` + (state.threadId ? "?thread_id=" + encodeURIComponent(state.threadId) : ""));
+  ws.binaryType = "arraybuffer";
+  Object.assign(live, { kind: "websocket", ws, ctx, mic, speaker });
+
+  mic.port.onmessage = (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(e.data); };
+  ws.onmessage = (e) => {
+    if (typeof e.data !== "string") {
+      const n = e.data.byteLength - (e.data.byteLength % 2);
+      if (n) { const pcm = n === e.data.byteLength ? e.data : e.data.slice(0, n); speaker.port.postMessage(pcm, [pcm]); }
+      return;
+    }
+    onLiveEvent(JSON.parse(e.data));
+  };
+  ws.onclose = () => stopLive();
+  ws.onerror = () => liveNote("Live voice connection failed.");
+}
+
+function liveNote(text) {
+  const w = $("msg-wrap"); w.querySelector(".welcome")?.remove();
+  w.append(el("div", "live-note", text)); scrollDown();
+}
+
+function onLiveEvent(ev) {
+  const L = live; if (!L) return;
+  if (ev.type === "ready") {
+    setStatus("listening"); liveNote("Live voice on: just talk. You can interrupt the answer any time.");
+  } else if (ev.type === "partial") {
+    if (!L.partial) { L.partial = addMessage("user", ""); L.partial.querySelector(".bubble").classList.add("partial"); }
+    L.partial.querySelector(".bubble").textContent = ev.text; scrollDown();
+  } else if (ev.type === "user") {
+    const u = L.partial || addMessage("user", "");
+    const b = u.querySelector(".bubble"); b.classList.remove("partial"); b.textContent = ev.text;
+    L.partial = null;
+    const msg = addMessage("assistant", "");
+    const bubble = msg.querySelector(".bubble");
+    const thinking = el("div", "thinking"); const dots = el("span", "dots"); dots.append(el("i"), el("i"), el("i"));
+    const step = el("span", "elapsed", ""); thinking.append(dots, step); bubble.replaceChildren(thinking);
+    L.turn = { msg, bubble, step, answer: "" };
+    scrollDown();
+  } else if (ev.type === "thread") {
+    state.threadId = ev.thread.thread_id; history.replaceState(null, "", "#" + state.threadId); setHeader(ev.thread);
+  } else if (ev.type === "tool" && L.turn) {
+    L.turn.step.textContent = "· " + ev.label + "…";
+  } else if (ev.type === "token" && L.turn) {
+    L.turn.answer += ev.text; L.turn.bubble.innerHTML = md(L.turn.answer); L.turn.bubble.classList.add("cursor"); scrollDown();
+  } else if ((ev.type === "redact" || ev.type === "relabel") && L.turn) {
+    L.turn.answer = ev.text; L.turn.bubble.innerHTML = md(ev.text);
+  } else if (ev.type === "done" && L.turn) {
+    L.turn.bubble.classList.remove("cursor"); L.turn.bubble.innerHTML = md(ev.message.content);
+    finishAssistant(L.turn.msg, ev.message); setHeader(ev.thread); loadThreads(); L.turn = null;
+  } else if (ev.type === "interrupt") {
+    if (L.speaker) L.speaker.port.postMessage("clear");  // WebRTC: the server already stopped the audio
+  } else if (ev.type === "speaking") {
+    setStatus(ev.on ? "speaking" : "listening");
+  } else if (ev.type === "error") {
+    if (L.turn) { L.turn.bubble.classList.remove("cursor"); L.turn.bubble.append(el("div", "error", "Error: " + ev.message)); L.turn = null; }
+    else liveNote("Live voice: " + ev.message);
+  } else if (ev.type === "end") {
+    L.ended = true;
+    liveNote(ev.reason === "idle" ? "Live voice stopped after a quiet spell, to save credit. Press the live button to talk again."
+      : ev.reason === "max" ? "Live voice stopped: the session time limit was reached." : "Live voice stopped.");
+  }
+}
+
+function stopLive() {
+  const L = live; if (!L) return;
+  live = null;
+  if (L.ws) { try { L.ws.close(); } catch {} }
+  if (L.ctx) L.ctx.close().catch(() => {});
+  if (L.pc) {
+    L.ping && L.ping();
+    try { L.dc.close(); } catch {}
+    try { L.pc.close(); } catch {}
+    L.audioEl.srcObject = null;
+  }
+  L.stream.getTracks().forEach((t) => t.stop());
+  if (L.partial && !L.partial.querySelector(".bubble").textContent) L.partial.remove();
+  if (L.turn) L.turn.bubble.classList.remove("cursor");
+  liveButtonOn(false);
+  setStatus("ready");
+  loadThreads();
+}
+$("live").onclick = () => (live ? stopLive() : startLive());
+
 (async function init() {
   loadFiles().catch(() => {});
   const id = location.hash.slice(1);
@@ -972,6 +1194,7 @@ if (!SpeechRec) $("mic-device").hidden = true;
   try {
     const h = await api("/health");
     if (h.mongo !== "ok") throw new Error("database unavailable");
+    $("live").hidden = !h.live_voice;
     const sf = h.salesforce || {};
     $("status").title = `Model: ${h.model} · LangSmith tracing: ${h.langsmith_tracing ? "on (" + h.langsmith_project + ")" : "off, add LANGSMITH_API_KEY to .env"}`
       + ` · Salesforce: ${sf.connected ? "connected via " + sf.auth : "not connected (" + (sf.auth || "not configured") + ")"}`;

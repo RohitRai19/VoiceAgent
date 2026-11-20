@@ -41,6 +41,24 @@ STT_MIN_LOGPROB = float(os.getenv("STT_MIN_LOGPROB", "-1.0"))
 # --- Live data tools (live_tools.py) ---
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 
+# Live voice mode (Sarvam live speech-to-text + streaming voice). Sarvam bills the audio it hears,
+# so a live session stops by itself after LIVE_IDLE_S seconds without speech, and after LIVE_MAX_S.
+SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "").strip()
+SARVAM_STT_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v4")
+SARVAM_TTS_MODEL = os.getenv("SARVAM_TTS_MODEL", "bulbul:v4-flash")
+SARVAM_TTS_VOICE = os.getenv("SARVAM_TTS_VOICE", "simran_enhi_customer")  # speaks Hindi and English
+LIVE_IDLE_S = int(os.getenv("LIVE_IDLE_S", "45"))
+LIVE_MAX_S = int(os.getenv("LIVE_MAX_S", "600"))
+# Echo guard: while the bot speaks, the user must say this many words to interrupt it.
+LIVE_INTERRUPT_MIN_WORDS = int(os.getenv("LIVE_INTERRUPT_MIN_WORDS", "2"))
+# WebRTC (live voice audio; the browser's echo cancellation works properly with it).
+# STUN finds the public address. A TURN relay is needed when the server runs inside Docker on AWS
+# (fixed ports) or for users on strict office networks; leave empty to use STUN only.
+WEBRTC_STUN_URL = os.getenv("WEBRTC_STUN_URL", "stun:stun.l.google.com:19302").strip()
+WEBRTC_TURN_URL = os.getenv("WEBRTC_TURN_URL", "").strip()          # e.g. turn:your-domain:3478
+WEBRTC_TURN_USERNAME = os.getenv("WEBRTC_TURN_USERNAME", "").strip()
+WEBRTC_TURN_PASSWORD = os.getenv("WEBRTC_TURN_PASSWORD", "").strip()
+
 
 def _on(name: str) -> bool:
     return os.getenv(name, "true").strip().lower() in {"1", "true", "yes", "on"}
